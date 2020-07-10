@@ -1,13 +1,29 @@
 package keysync
 
-import ()
+import (
+	"time"
+
+	"github.com/sirupsen/logrus"
+	"k8s.io/client-go/kubernetes"
+)
 
 type KeySyncServer struct {
-    // clientset
-    // query interval
-    // sync directory location
+	// clientset
+	K8sClient *kubernetes.Clientset
+
+	// query interval
+	Interval time.Duration
+
+	// sync directory location
+	KeySyncDir string
 }
 
-func (ks *KeySyncServer) Start () error {
-    return nil
+func (ks *KeySyncServer) Start() error {
+	for {
+		select {
+		case <-time.After(ks.Interval):
+			logrus.Printf("hello")
+		}
+	}
+	return nil
 }

@@ -4,7 +4,10 @@ all: build
 
 build: bin/keysync
 
-bin/keysync: keysync/ main_keysync.go
+fmt: 
+	go fmt *.go
+
+bin/keysync: keysync/* main_keysync.go
 	go build -o bin/keysync main_keysync.go
 
 

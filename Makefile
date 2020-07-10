@@ -1,11 +1,13 @@
-.PHONY: vendor
+.PHONY: vendor check all build fmt clean
 
 all: build
+
+check: fmt vendor build clean
 
 build: bin/keysync
 
 fmt: 
-	go fmt *.go
+	go fmt $(go list ./...)
 
 bin/keysync: keysync/* main_keysync.go
 	go build -o bin/keysync main_keysync.go

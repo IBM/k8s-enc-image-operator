@@ -7,17 +7,23 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// KeySyncServer contains the parameters required for operation of the
+// key sync server
 type KeySyncServer struct {
-	// clientset
+	// K8sClient is the k8s clientset to interface with the kubernetes
+    // cluster
 	K8sClient *kubernetes.Clientset
 
-	// query interval
+	// Interval is the query interval in which to sync the decryption keys
 	Interval time.Duration
 
-	// sync directory location
+	// KeySyncDir specifies the directory where keys are synced to
 	KeySyncDir string
 }
 
+
+// Start begins running the KeySyncServer according to the parameters
+// specified
 func (ks *KeySyncServer) Start() error {
 	for {
 		select {

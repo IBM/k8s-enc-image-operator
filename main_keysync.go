@@ -12,21 +12,20 @@ import (
 )
 
 func main() {
-
 	inputFlags := struct {
 		kubeconfig string
-		interval   string
+		interval   uint
 		dir        string
 	}{
 		kubeconfig: "",
-		interval:   "10s",
+		interval:   10,
 		dir:        "/tmp/keys",
 	}
 
 	flag.StringVar(&inputFlags.kubeconfig, "kubeconfig", inputFlags.kubeconfig,
 		"(optional) kubeconfig file to use, defaults to in-cluster config otherwise")
-	flag.StringVar(&inputFlags.interval, "interval", inputFlags.interval,
-		"(optional) interval to sync decryption keys")
+	flag.UintVar(&inputFlags.interval, "interval", inputFlags.interval,
+		"(optional) interval to sync decryption keys (in seconds)")
 	flag.StringVar(&inputFlags.dir, "dir", inputFlags.dir,
 		"(optional) directory to sync keys to")
 	flag.Parse()
@@ -40,15 +39,12 @@ func main() {
 		panic(err)
 	}
 
-	// TODO: Take in flags from args
-	interval := 30 * time.Second
-	dir := "/tmp/keys"
-
 	ks := &keysync.KeySyncServer{
 		K8sClient:  clientset,
-		Interval:   interval,
-		KeySyncDir: dir,
+		Interval:   time.Duration(inputFlags.interval) * time.Second,
+		KeySyncDir: inputFlags.dir,
 	}
+
 	if err := ks.Start(); err != nil {
 		logrus.Fatalf("KeySync failure: %v", err)
 	}

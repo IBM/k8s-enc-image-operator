@@ -1,0 +1,37 @@
+ced with --dry-run=client.
+apiVersion: v1
+kind: Namespace
+metadata:
+  creationTimestamp: null
+  name: enc-key-sync
+spec: {}
+status: {}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: enc-key-sync
+  namespace: enc-key-sync
+  labels:
+    app: enc-key-sync
+spec:
+  selector:
+    matchLabels:
+      name: enc-key-sync
+  template:
+    metadata:
+      labels:
+        name: enc-key-sync
+    spec:
+      containers:
+      - name: enc-key-sync
+        image: lumjjb/keysync:latest
+        volumeMounts:
+        - name: hostkeys
+          mountPath: /keys
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: hostkeys
+        hostPath:
+          path: /etc/crio/keys
+          type: DirectoryOrCreate

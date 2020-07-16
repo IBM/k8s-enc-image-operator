@@ -1,4 +1,4 @@
-.PHONY: vendor check all build fmt clean
+.PHONY: vendor check all build fmt clean FORCE
 
 all: build
 
@@ -12,6 +12,12 @@ fmt:
 bin/keysync: keysync/* main_keysync.go
 	go build -o bin/keysync main_keysync.go
 
+container: bin/keysync
+	docker build -f Dockerfile.keysync -t keysync:latest .
+
+container-push: container
+	docker tag keysync:latest lumjjb/keysync:latest
+	docker push lumjjb/keysync:latest
 
 vendor:
 	GO111MODULE=on \

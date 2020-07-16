@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"os"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -9,6 +10,10 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/lumjjb/k8s-enc-image-operator/keysync"
+)
+
+const (
+	NamespaceEnv = "POD_NAMESPACE"
 )
 
 func main() {
@@ -39,11 +44,19 @@ func main() {
 		panic(err)
 	}
 
+	namespace := os.Getenv(NamespaceEnv)
+
 	ks := &keysync.KeySyncServer{
 		K8sClient:  clientset,
 		Interval:   time.Duration(inputFlags.interval) * time.Second,
 		KeySyncDir: inputFlags.dir,
+		Namespace:  namespace,
 	}
+
+	logrus.Printf("Starting KeySync server with sync-dir %v, interval %v s, namespace %v",
+		ks.KeySyncDir,
+		ks.Interval/time.Second,
+		ks.Namespace)
 
 	if err := ks.Start(); err != nil {
 		logrus.Fatalf("KeySync failure: %v", err)

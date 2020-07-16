@@ -1,4 +1,3 @@
-ced with --dry-run=client.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -26,6 +25,12 @@ spec:
       containers:
       - name: enc-key-sync
         image: lumjjb/keysync:latest
+        imagePullPolicy: Always
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         volumeMounts:
         - name: hostkeys
           mountPath: /keys
@@ -35,3 +40,32 @@ spec:
         hostPath:
           path: /etc/crio/keys
           type: DirectoryOrCreate
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  creationTimestamp: null
+  name: enc-key-sync-r
+  namespace: enc-key-sync
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: enc-key-sync-rb
+  namespace: enc-key-sync
+subjects:
+- kind: ServiceAccount
+  name: default
+roleRef:
+  kind: Role
+  name: enc-key-sync-r
+  apiGroup: rbac.authorization.k8s.io

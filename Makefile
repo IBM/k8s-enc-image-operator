@@ -7,7 +7,7 @@ check: fmt vendor build clean
 build: bin/keysync
 
 fmt: 
-	go fmt $(go list ./...)
+	go fmt ./...
 
 bin/keysync: keysync/* main_keysync.go
 	go build -o bin/keysync main_keysync.go

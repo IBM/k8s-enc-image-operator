@@ -26,6 +26,9 @@ spec:
       - name: enc-key-sync
         image: lumjjb/keysync:latest
         imagePullPolicy: Always
+        args:
+        - -dir
+        - /keys
         env:
         - name: POD_NAMESPACE
           valueFrom:

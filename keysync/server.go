@@ -88,6 +88,7 @@ func (ks *KeySyncServer) syncSecretsToLocalKeys(secList *corev1.SecretList) {
 			// Write file to directory if file doesn't already exist
 			path := filepath.Join(ks.KeySyncDir, filename)
 			if !fileExists(path) {
+				logrus.Printf("Syncing new key: %v", filename)
 				err := ioutil.WriteFile(path, data, 0600)
 				if err != nil {
 					logrus.Errorf("Unable to write file %s", path)
@@ -95,12 +96,26 @@ func (ks *KeySyncServer) syncSecretsToLocalKeys(secList *corev1.SecretList) {
 				}
 			}
 		}
+	}
 
-		// TODO: Do cleanup of files that are not part of current secrets
-		// Get list of files in directory
+	// Do cleanup of files that are not part of current secrets
+	files, err := ioutil.ReadDir(ks.KeySyncDir)
+	if err != nil {
+		files = []os.FileInfo{}
+		logrus.Errorf("Unable to list directory for cleanup")
+	}
 
-		// Remove all files that are not tracked based on filename map
-		// from above
+	// Remove all files that are not tracked based on filename map
+	// from above
+	for _, file := range files {
+		filename := file.Name()
+		if !filenameMap[filename] {
+			path := filepath.Join(ks.KeySyncDir, filename)
+			logrus.Printf("Deleting old key: %v", filename)
+			if err = os.Remove(path); err != nil {
+				logrus.Errorf("Unable to delete old key %v, %v", path, err)
+			}
+		}
 	}
 }
 

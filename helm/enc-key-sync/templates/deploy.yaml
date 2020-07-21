@@ -42,7 +42,7 @@ spec:
       volumes:
       - name: hostkeys
         hostPath:
-          path: /etc/crio/keys/enc-key-sync
+          path: {{ .Values.keyPath }}
           type: DirectoryOrCreate
 ---
 apiVersion: rbac.authorization.k8s.io/v1

@@ -38,11 +38,11 @@ h1TW/ep4aPeI0UE0ZNOifUB37IGXETO5fohbzm799dH8jtAkE02pww==
 EOF
 ```
 
-Install a key by creating a generic secret in the `enc-key-sync` namespace,
+Install a key by creating a generic secret in the `{{ .Release.Namespace }}` namespace,
 with `--type=key`:
 
 ```
-$ kubectl create -n enc-key-sync secret generic \
+$ kubectl create -n {{ .Release.Namespace }} secret generic \
     --type=key \
     --from-file=my-priv-key.pem \
     my-decryption-key
@@ -54,3 +54,4 @@ Create the encrypted container workload. We will use a sample application that
 has been encrypted by the above key's public key.
 ```
 $ kubectl run enc-workload --image=docker.io/lumjjb/sample-enc-app
+```

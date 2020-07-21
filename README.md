@@ -5,8 +5,11 @@ This operator provides facility to sync decryption keys required for Encrypted C
 # Requirements
 
 Currently this will only work out of the box with:
-- Kubernetes (>= 1.17) with cri-o runtime (>=1.17)
+- Kubernetes (>= 1.17) with cri-o runtime (>=1.17) or containerd (>=1.4)
 - Optional: Helm (>= 3)
+
+For this README, we will use cri-o as a runtime as it has default configuration
+set up.
 
 This can be done either using OpenShift 4.4 and above or using minikube v1.12.0
 with this command:

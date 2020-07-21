@@ -6,6 +6,7 @@ This operator provides facility to sync decryption keys required for Encrypted C
 
 Currently this will only work out of the box with:
 - Kubernetes (>= 1.17) with cri-o runtime (>=1.17)
+- Optional: Helm
 
 This can be done either using OpenShift 4.4 and above or using minikube v1.12.0
 with this command:
@@ -17,14 +18,48 @@ $ minikube start \
     --container-runtime=cri-o \
     --bootstrapper=kubeadm
 ```
+<details>
+<summary>containerd configuration</summary>
+
+With additional configuration, it can be used with containerd runtime (>=1.4).
+For more info, please refer to the [containerd/cri docs](https://github.com/containerd/cri/blob/master/docs/decryption.md).
+</details>
 
 ## Install the operator
+
+There are currently two ways to install the operator, one is via deploying
+the resources directly into the kubernetes cluster, and to do it via Helm.
+
+## If deploying directly:
 
 Deploy the operator on the cluster with `kubectl`. By default, it will install
 the operator in the `enc-key-sync` namespace.
 ```
 $ kubectl apply -f deploy/deploy.yaml
 ```
+
+## If deploying via helm:
+
+Deploy the operator on the cluster with `helm`. 
+```
+$ helm install --namespace=enc-key-sync k8s-enc-image-operator 
+```
+
+<details>
+<summary>containerd configuration</summary>
+
+## If deploying for containerd:
+
+Deploy the operator on the cluster with `helm`, and change the value of the keys
+directory to the directory or subdirectory of the containerd configuration. For
+example, if the keys directory is set to `/path/to/keys`, then the value of 
+`keysDir` can be set to `/path/to/keys` or `/path/to/keys/subfolder`.
+
+```
+$ helm install --namespace=enc-key-sync --set keysDir=/path/to/keys k8s-enc-image-operator
+```
+
+</details>
 
 # Try out an example
 

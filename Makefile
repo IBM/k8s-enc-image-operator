@@ -19,6 +19,12 @@ container-push: container
 	docker tag keysync:latest lumjjb/keysync:latest
 	docker push lumjjb/keysync:latest
 
+operator:
+	make build -C enc-key-sync-operator
+
+operator-push:
+	make push -C enc-key-sync-operator
+
 vendor:
 	GO111MODULE=on \
 		go mod tidy && \

@@ -1,0 +1,7 @@
+apiVersion: oci.crypt/v1alpha1
+kind: EncKeySync
+metadata:
+  name: example-enckeysync
+spec:
+  # Default values copied from <project_dir>/helm-charts/enckeysync/values.yaml
+  keysDir: /etc/crio/keys/enc-key-sync

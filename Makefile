@@ -1,4 +1,4 @@
-.PHONY: vendor check all build fmt clean FORCE
+.PHONY: vendor check all build fmt clean operator operator-push operator-bundle FORCE
 
 all: build
 
@@ -24,6 +24,9 @@ operator:
 
 operator-push:
 	make push -C enc-key-sync-operator
+
+operator-bundle:
+	make bundle -C enc-key-sync-operator
 
 vendor:
 	GO111MODULE=on \

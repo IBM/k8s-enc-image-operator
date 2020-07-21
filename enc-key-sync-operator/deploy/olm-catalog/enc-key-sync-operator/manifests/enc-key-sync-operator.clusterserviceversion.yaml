@@ -1,0 +1,197 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  name: enc-key-sync-operator.v0.0.1
+  
+  namespace: placeholder
+  annotations:
+    capabilities: Basic Install
+    categories: Security
+    certified: 'false'
+    alm-examples: |
+      [
+        {
+          "apiVersion": "oci.crypt/v1alpha1",
+          "kind": "EncKeySync",
+          "metadata": {
+            "name": "example-enckeysync"
+          },
+          "spec": {
+            "keysDir": "/etc/crio/keys/enc-key-sync"
+          }
+        }
+      ]
+    description: >+
+      This operator provides facility to sync decryption keys required for
+      Encrypted Container Images.
+
+spec:
+  description: >
+    ## About this Operator
+
+    This operator provides facility to sync decryption keys required for
+    Encrypted Container Images through the use of Kubernetes secrets.
+
+
+    ## Prerequisites for enabling this Operator 
+
+    Kubernetes (>= 1.17) with cri-o runtime (>=1.17) or containerd (>=1.4)
+
+    ## For instructions of usage, please visit the README.md at
+
+    https://github.com/IBM/k8s-enc-image-operator
+  maturity: alpha
+  keywords:
+    - encryption
+    - decryption
+    - oci
+    - image
+    - container
+  maintainers:
+    - name: Brandon Lum
+      email: lumjjb@gmail.com
+  provider:
+    name: IBM
+  version: 0.0.1
+  replaces: ''
+  skips: []
+  minKubeVersion: 1.17.0
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+      - kind: EncKeySync
+        name: enckeysyncs.oci.crypt
+        version: v1alpha1
+        specDescriptors: []
+        statusDescriptors: []
+        description: Configuration for enc-key-sync helm deployment
+        displayName: EncKeySync helm configuration
+  displayName: Encrypted Images Key Syncer Helm Operator
+  icon:
+    - base64data: ''
+      mediatype: ''
+  install:
+    spec:
+      deployments:
+        - name: enc-key-sync-operator
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                name: enc-key-sync-operator
+            strategy: {}
+            template:
+              metadata:
+                labels:
+                  name: enc-key-sync-operator
+              spec:
+                containers:
+                  - env:
+                      - name: WATCH_NAMESPACE
+                        valueFrom:
+                          fieldRef:
+                            fieldPath: 'metadata.annotations[''olm.targetNamespaces'']'
+                      - name: POD_NAME
+                        valueFrom:
+                          fieldRef:
+                            fieldPath: metadata.name
+                      - name: OPERATOR_NAME
+                        value: enc-key-sync-operator
+                    image: 'docker.io/lumjjb/enc-key-sync-operator:v0.0.1'
+                    imagePullPolicy: Always
+                    name: enc-key-sync-operator
+                    resources: {}
+                serviceAccountName: enc-key-sync-operator
+      permissions:
+        - rules:
+            - apiGroups:
+                - ''
+              resources:
+                - namespaces
+              verbs:
+                - get
+            - apiGroups:
+                - ''
+              resources:
+                - configmaps
+                - secrets
+              verbs:
+                - '*'
+            - apiGroups:
+                - ''
+              resources:
+                - events
+              verbs:
+                - create
+            - apiGroups:
+                - ''
+              resources:
+                - serviceaccounts
+                - services
+              verbs:
+                - '*'
+            - apiGroups:
+                - apps
+              resources:
+                - deployments
+                - daemonsets
+              verbs:
+                - '*'
+            - apiGroups:
+                - monitoring.coreos.com
+              resources:
+                - servicemonitors
+              verbs:
+                - get
+                - create
+            - apiGroups:
+                - apps
+              resourceNames:
+                - enc-key-sync-operator
+              resources:
+                - deployments/finalizers
+              verbs:
+                - update
+            - apiGroups:
+                - ''
+              resources:
+                - pods
+              verbs:
+                - get
+            - apiGroups:
+                - apps
+              resources:
+                - replicasets
+                - deployments
+              verbs:
+                - get
+            - apiGroups:
+                - rbac.authorization.k8s.io
+              resources:
+                - roles
+                - rolebindings
+              verbs:
+                - '*'
+            - apiGroups:
+                - oci.crypt
+              resources:
+                - '*'
+              verbs:
+                - create
+                - delete
+                - get
+                - list
+                - patch
+                - update
+                - watch
+          serviceAccountName: enc-key-sync-operator
+    strategy: deployment
+  installModes:
+    - supported: true
+      type: OwnNamespace
+    - supported: true
+      type: SingleNamespace
+    - supported: false
+      type: MultiNamespace
+    - supported: true
+      type: AllNamespaces

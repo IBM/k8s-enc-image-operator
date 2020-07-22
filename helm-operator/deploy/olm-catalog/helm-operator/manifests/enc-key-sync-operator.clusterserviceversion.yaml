@@ -20,7 +20,8 @@ metadata:
             "name": "example-enckeysync"
           },
           "spec": {
-            "keysDir": "/etc/crio/keys/enc-key-sync"
+            "keysDir": "/etc/crio/keys/enc-key-sync",
+            "isOpenShift": true
           }
         }
       ]

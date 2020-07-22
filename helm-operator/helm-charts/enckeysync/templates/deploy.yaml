@@ -38,6 +38,12 @@ spec:
         volumeMounts:
         - name: hostkeys
           mountPath: /keys
+        # privileged required for openshift because of SELinux restricting access to certain hostPaths
+        {{- if .Values.isOpenShift }}
+        securityContext:
+          privileged: true
+        {{- end }}
+
       terminationGracePeriodSeconds: 30
       volumes:
       - name: hostkeys
@@ -61,6 +67,7 @@ rules:
   - list
   - watch
 # Used for openshift to mount hostPath
+{{- if .Values.isOpenShift }}
 - apiGroups:
    - security.openshift.io
   resources:
@@ -68,7 +75,8 @@ rules:
   verbs:
    - use
   resourceNames:
-   - hostmount-anyuid
+   - privileged
+{{- end }}
 ---
 kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1

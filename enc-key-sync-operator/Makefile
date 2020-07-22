@@ -17,5 +17,5 @@ bundle:
 	opm index add \
 	    -c docker \
 		--bundles docker.io/lumjjb/enc-key-sync-operator-bundle:v0.0.1 \
-		--tag docker.io/lumjjb/enc-key-sync-operator-catalog:v0.0.1 \
+		--tag docker.io/lumjjb/enc-key-sync-operator-catalog:v0.0.1
 	docker push docker.io/lumjjb/enc-key-sync-operator-catalog:v0.0.1

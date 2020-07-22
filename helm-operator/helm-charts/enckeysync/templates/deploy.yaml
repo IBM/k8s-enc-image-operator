@@ -60,6 +60,15 @@ rules:
   - get
   - list
   - watch
+# Used for openshift to mount hostPath
+- apiGroups:
+   - security.openshift.io
+  resources:
+   - securitycontextconstraints
+  verbs:
+   - use
+  resourceNames:
+   - hostmount-anyuid
 ---
 kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1

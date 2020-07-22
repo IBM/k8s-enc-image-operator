@@ -56,7 +56,7 @@ spec:
     ### Setup and Usage
 
     To go through the process of setting up the operator and configuring the
-    cluster runtime, please refer to the steps in this [README](https://github.com/IBM/k8s-enc-image-operator/tree/master/enc-key-sync-operator/README.md).
+    cluster runtime, please refer to the steps in this [README](https://github.com/IBM/k8s-enc-image-operator/tree/master/helm-operator/README.md).
 
     ### Questions and support
 

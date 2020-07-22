@@ -48,7 +48,7 @@ $ kubectl apply -f deploy/deploy.yaml
 Deploy the operator on the cluster with `helm`. 
 ```
 $ kubectl create namespace enc-key-sync
-$ helm install --namespace=enc-key-sync k8s-enc-image-operator ./helm/enc-key-sync
+$ helm install --namespace=enc-key-sync k8s-enc-image-operator ./helm-operator/helm-charts/enckeysync/
 ```
 
 <details>
@@ -63,7 +63,7 @@ example, if the keys directory is set to `/path/to/keys`, then the value of
 
 ```
 $ kubectl create namespace enc-key-sync
-$ helm install --namespace=enc-key-sync --set keysDir=/path/to/keys k8s-enc-image-operator ./helm/enc-key-sync
+$ helm install --namespace=enc-key-sync --set keysDir=/path/to/keys k8s-enc-image-operator ./helm-operator/helm-charts/enckeysync/
 ```
 
 </details>

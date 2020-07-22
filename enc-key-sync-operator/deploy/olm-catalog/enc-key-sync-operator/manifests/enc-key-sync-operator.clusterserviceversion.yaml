@@ -33,16 +33,38 @@ spec:
     ## About this Operator
 
     This operator provides facility to sync decryption keys required for
-    Encrypted Container Images through the use of Kubernetes secrets.
+    Encrypted Container Images.
+
+    This operator allows the easy deployment of a Daemonset that syncs keys
+    so that they are available to the container runtime (i.e. containerd/crio).
+    The current supported ways to do this are through
+
+    - Kubernetes secrets
 
 
-    ## Prerequisites for enabling this Operator 
+    For more information on what encrypted container images are and how to
+    encrypt and use them, please refer to the links attached in this operator
+    manifest.
 
-    Kubernetes (>= 1.17) with cri-o runtime (>=1.17) or containerd (>=1.4)
+    ### Prerequisites for enabling this Operator
 
-    ## For instructions of usage, please visit the README.md at
+    - Kubernetes (>= 1.17)
 
-    https://github.com/IBM/k8s-enc-image-operator
+    - With cri-o runtime (>=1.17) or containerd (>=1.4)
+
+
+    ### Setup and Usage
+
+    To go through the process of setting up the operator and configuring the
+    cluster runtime, please refer to the steps in this [README](https://github.com/IBM/k8s-enc-image-operator/tree/master/enc-key-sync-operator/README.md).
+
+    ### Questions and support
+
+    If you have any questions about the operator and/or encrypted container
+    images, please reach out to our maintainers or create an issue in the
+    github link in the manifest.
+
+
   maturity: alpha
   keywords:
     - encryption
@@ -197,5 +219,12 @@ spec:
       type: SingleNamespace
     - supported: false
       type: MultiNamespace
-    - supported: true
+    - supported: false
       type: AllNamespaces
+  links:
+    - name: 'CNCF Webinar: Encrypted Container Images'
+      url: >-
+        https://www.cncf.io/webinars/advancing-image-security-and-compliance-through-container-image-encryption/
+    - name: 'Blog: Advancing image security encrypted container images'
+      url: >-
+        https://developer.ibm.com/articles/advancing-image-security-encrypted-container-images/

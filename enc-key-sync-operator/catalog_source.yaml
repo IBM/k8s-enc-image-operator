@@ -6,7 +6,7 @@ metadata:
 spec:
   sourceType: grpc
   image: docker.io/lumjjb/enc-key-sync-operator-catalog:v0.0.1
-  displayName: Test Catalog
+  displayName: Encrypted Key Sync Catalog
   updateStrategy:
     registryPoll: 
       interval: 30m

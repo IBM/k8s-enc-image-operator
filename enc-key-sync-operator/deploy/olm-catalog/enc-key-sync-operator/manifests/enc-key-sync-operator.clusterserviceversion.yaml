@@ -7,6 +7,10 @@ metadata:
     capabilities: Basic Install
     categories: Security
     certified: 'false'
+    containerImage: docker.io/lumjjb/enc-key-sync-operator:v0.0.1
+    createdAt: 2020-07-21 20:00:00
+    repository: https://github.com/IBM/k8s-enc-image-operator
+    support: IBM
     alm-examples: |
       [
         {

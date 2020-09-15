@@ -1,5 +1,5 @@
 # Default values for enc-key-sync.
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
-keyPath: /etc/crio/keys/enc-key-sync
+keysDir: /etc/crio/keys/enc-key-sync
 isOpenShift: false

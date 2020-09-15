@@ -48,7 +48,7 @@ spec:
       volumes:
       - name: hostkeys
         hostPath:
-          path: {{ .Values.keyPath }}
+          path: {{ .Values.keysDir}}
           type: DirectoryOrCreate
 ---
 apiVersion: rbac.authorization.k8s.io/v1

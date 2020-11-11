@@ -1,7 +1,7 @@
 package keysync
 
 import (
-	"crypto/md5"
+	"crypto/md5" // #nosec G501
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	KeyTypeFieldSelector = "type=key"
+	keyTypeFieldSelector = "type=key"
 )
 
 // KeySyncServer contains the parameters required for operation of the
@@ -42,20 +42,18 @@ func (ks *KeySyncServer) Start() error {
 
 	// Create channel for immediate call for the first time
 	for {
-		select {
-		case <-time.After(ks.Interval):
-			secList, err := secClient.List(metav1.ListOptions{
-				FieldSelector: "type=key",
-			})
-			if err != nil {
-				logrus.Errorf("Error listing secrets: %v", err)
-				continue
-			}
+		<-time.After(ks.Interval)
 
-			ks.syncSecretsToLocalKeys(secList)
+		secList, err := secClient.List(metav1.ListOptions{
+			FieldSelector: keyTypeFieldSelector,
+		})
+		if err != nil {
+			logrus.Errorf("Error listing secrets: %v", err)
+			continue
 		}
+
+		ks.syncSecretsToLocalKeys(secList)
 	}
-	return nil
 }
 
 // syncSecretsToLocalKeys syncs the secrets to the local keys, errors are logged
@@ -76,7 +74,7 @@ func (ks *KeySyncServer) syncSecretsToLocalKeys(secList *corev1.SecretList) {
 
 		// For each file in the secret
 		for filename, data := range s.Data {
-			hashString := fmt.Sprintf("%x", md5.Sum(data))
+			hashString := fmt.Sprintf("%x", md5.Sum(data)) // #nosec G401
 
 			// Hash contents of each file, and check if they exists
 			// already before writing

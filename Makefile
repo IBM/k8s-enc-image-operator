@@ -40,5 +40,8 @@ vendor:
 		go mod vendor && \
 		go mod verify
 
+test:
+	go test ./keysync
+
 clean:
 	rm -rf bin/

@@ -6,6 +6,7 @@ check:
 	make vendor
 	make fmt
 	make build
+	make test
 	make clean
 
 build: bin/keysync

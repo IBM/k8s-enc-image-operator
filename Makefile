@@ -2,12 +2,18 @@
 
 all: build
 
-check: fmt vendor build clean
+check:
+	make vendor
+	make fmt
+	make build
+	make clean
 
 build: bin/keysync
 
 fmt: 
 	go fmt ./...
+	gosec ./...
+	golangci-lint run
 
 bin/keysync: keysync/* main_keysync.go
 	go build -o bin/keysync main_keysync.go

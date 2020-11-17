@@ -38,7 +38,6 @@ operator-bundle:
 vendor:
 	GO111MODULE=on \
 		go mod tidy && \
-		go mod vendor && \
 		go mod verify
 
 test:

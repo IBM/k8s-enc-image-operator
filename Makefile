@@ -6,6 +6,7 @@ check:
 	make vendor
 	make fmt
 	make build
+	make test
 	make clean
 
 build: bin/keysync
@@ -37,8 +38,10 @@ operator-bundle:
 vendor:
 	GO111MODULE=on \
 		go mod tidy && \
-		go mod vendor && \
 		go mod verify
+
+test:
+	go test ./keysync
 
 clean:
 	rm -rf bin/

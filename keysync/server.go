@@ -11,7 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
+	clientset "k8s.io/client-go/kubernetes"
 )
 
 const (
@@ -23,7 +23,7 @@ const (
 type KeySyncServer struct {
 	// K8sClient is the k8s clientset to interface with the kubernetes
 	// cluster
-	K8sClient *kubernetes.Clientset
+	K8sClient clientset.Interface
 
 	// Interval is the query interval in which to sync the decryption keys
 	Interval time.Duration

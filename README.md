@@ -125,3 +125,7 @@ has been encrypted by the above key's public key.
 ```
 $ kubectl run enc-workload --image=docker.io/lumjjb/sample-enc-app
 ```
+
+# Developing 
+
+We are using golang 1.14.7 or later, expect problems with earlier releases.

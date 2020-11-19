@@ -13,6 +13,7 @@ build: bin/keysync
 
 fmt: 
 	go fmt ./...
+	scripts/copyright-check.sh
 	gosec ./...
 	golangci-lint run
 

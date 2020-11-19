@@ -9,7 +9,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
+	keyprotect "github.com/lumjjb/k8s-enc-image-operator/keyprotect"
 	"github.com/lumjjb/k8s-enc-image-operator/keysync"
+	"github.com/lumjjb/k8s-enc-image-operator/keysync/sechandlers"
 )
 
 const (
@@ -18,13 +20,15 @@ const (
 
 func main() {
 	inputFlags := struct {
-		kubeconfig string
-		interval   uint
-		dir        string
+		kubeconfig       string
+		interval         uint
+		dir              string
+		keyprotectConfig string
 	}{
-		kubeconfig: "",
-		interval:   10,
-		dir:        "/tmp/keys",
+		kubeconfig:       "",
+		interval:         10,
+		dir:              "/tmp/keys",
+		keyprotectConfig: "",
 	}
 
 	flag.StringVar(&inputFlags.kubeconfig, "kubeconfig", inputFlags.kubeconfig,
@@ -33,6 +37,9 @@ func main() {
 		"(optional) interval to sync decryption keys (in seconds)")
 	flag.StringVar(&inputFlags.dir, "dir", inputFlags.dir,
 		"(optional) directory to sync keys to")
+	flag.StringVar(&inputFlags.keyprotectConfig, "keyprotectConfig", inputFlags.keyprotectConfig,
+		"(optional) config file for keyprotect enablement")
+
 	flag.Parse()
 
 	config, err := clientcmd.BuildConfigFromFlags("", inputFlags.kubeconfig)
@@ -46,17 +53,29 @@ func main() {
 
 	namespace := os.Getenv(NamespaceEnv)
 
-	ks := &keysync.KeySyncServer{
-		K8sClient:  clientset,
-		Interval:   time.Duration(inputFlags.interval) * time.Second,
-		KeySyncDir: inputFlags.dir,
-		Namespace:  namespace,
+	skh := map[string]sechandlers.SecretKeyHandler{}
+
+	if inputFlags.keyprotectConfig != "" {
+		kpskh, err := keyprotect.GetSecKeyHandlerFromConfig(inputFlags.keyprotectConfig)
+		if err != nil {
+			panic(err)
+		}
+		skh["kp-key"] = kpskh
 	}
 
-	logrus.Printf("Starting KeySync server with sync-dir %v, interval %v s, namespace %v",
+	ks := &keysync.KeySyncServer{
+		K8sClient:          clientset,
+		Interval:           time.Duration(inputFlags.interval) * time.Second,
+		KeySyncDir:         inputFlags.dir,
+		Namespace:          namespace,
+		SpecialKeyHandlers: skh,
+	}
+
+	logrus.Printf("Starting KeySync server with sync-dir %v, interval %v s, namespace %v, specialHandlers: %+v",
 		ks.KeySyncDir,
 		ks.Interval/time.Second,
-		ks.Namespace)
+		ks.Namespace,
+		ks.SpecialKeyHandlers)
 
 	if err := ks.Start(); err != nil {
 		logrus.Fatalf("KeySync failure: %v", err)

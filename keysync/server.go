@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/lumjjb/k8s-enc-image-operator/keysync/sechandlers"
+
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,7 +17,7 @@ import (
 )
 
 const (
-	keyTypeFieldSelector = "type=key"
+	keyTypeFieldSelectorPrefix = "type="
 )
 
 // KeySyncServer contains the parameters required for operation of the
@@ -33,6 +35,13 @@ type KeySyncServer struct {
 
 	// Namespace specifies the namespace where key secrets are stored
 	Namespace string
+
+	// SpecialKeyHandlers handles non-standard keys with additional requirements
+	// such as requiring a remote unwrapping service, or talking to a HSM, etc.
+	// The map contains a mapping of key type of the secret that it handles,
+	// i.e. "kp-key" would be a map to secrets with "type=kp-key"
+	// to a handler of how the secret data will be translated to the key file.
+	SpecialKeyHandlers map[string]sechandlers.SecretKeyHandler
 }
 
 // Start begins running the KeySyncServer according to the parameters
@@ -40,25 +49,55 @@ type KeySyncServer struct {
 func (ks *KeySyncServer) Start() error {
 	secClient := ks.K8sClient.CoreV1().Secrets(ks.Namespace)
 
+	if ks.SpecialKeyHandlers == nil {
+		ks.SpecialKeyHandlers = map[string]sechandlers.SecretKeyHandler{}
+	}
+	// add the regular key type to the list of special key handlers
+	ks.SpecialKeyHandlers["key"] = sechandlers.RegularKeyHandler
+
 	// Create channel for immediate call for the first time
 	for {
 		<-time.After(ks.Interval)
 
-		secList, err := secClient.List(metav1.ListOptions{
-			FieldSelector: keyTypeFieldSelector,
-		})
-		if err != nil {
-			logrus.Errorf("Error listing secrets: %v", err)
-			continue
+		// Get list of new keys so that we can clean up obselete keys for revocation reasons
+		allFilenameMap := map[string]bool{}
+
+		for secType, skh := range ks.SpecialKeyHandlers {
+			secList, err := secClient.List(metav1.ListOptions{
+				FieldSelector: keyTypeFieldSelectorPrefix + secType,
+			})
+			if err != nil {
+				logrus.Errorf("Error listing secrets: %v", err)
+				continue
+			}
+			filenameMap := ks.syncSecretsToLocalKeys(secList, skh)
+
+			allFilenameMap = combineFilenameMap(allFilenameMap, filenameMap)
 		}
 
-		ks.syncSecretsToLocalKeys(secList)
+		// Purge keys which are not new
+		ks.cleanupKeys(allFilenameMap)
 	}
 }
 
+// combineFilenameMap returns a map that combines the contents of both f1 and f2
+// is potentially destructive to f1 for optimization reasons (like slice appends)
+func combineFilenameMap(f1 map[string]bool, f2 map[string]bool) map[string]bool {
+	if len(f1) == 0 {
+		return f2
+	}
+
+	for k, b := range f2 {
+		f1[k] = b
+	}
+
+	return f1
+}
+
 // syncSecretsToLocalKeys syncs the secrets to the local keys, errors are logged
-// and syncing is done on a best effort basis
-func (ks *KeySyncServer) syncSecretsToLocalKeys(secList *corev1.SecretList) {
+// and syncing is done on a best effort basis and returns the list of filenames
+// that were written
+func (ks *KeySyncServer) syncSecretsToLocalKeys(secList *corev1.SecretList, skh sechandlers.SecretKeyHandler) map[string]bool {
 	filenameMap := map[string]bool{}
 	for _, s := range secList.Items {
 		// Construct canonical secret filename based on hash
@@ -72,8 +111,15 @@ func (ks *KeySyncServer) syncSecretsToLocalKeys(secList *corev1.SecretList) {
 
 		name := s.ObjectMeta.Name
 
+		// Process the secrets to filename/priv key map
+		keyFiles, err := skh(s.Data)
+		if err != nil {
+			logrus.Errorf("Unable to process secret %s: %v", name, err)
+			continue
+		}
+
 		// For each file in the secret
-		for filename, data := range s.Data {
+		for filename, data := range keyFiles {
 			hashString := fmt.Sprintf("%x", md5.Sum(data)) // #nosec G401
 
 			// Hash contents of each file, and check if they exists
@@ -95,7 +141,10 @@ func (ks *KeySyncServer) syncSecretsToLocalKeys(secList *corev1.SecretList) {
 			}
 		}
 	}
+	return filenameMap
+}
 
+func (ks *KeySyncServer) cleanupKeys(filenameMap map[string]bool) {
 	// Do cleanup of files that are not part of current secrets
 	files, err := ioutil.ReadDir(ks.KeySyncDir)
 	if err != nil {

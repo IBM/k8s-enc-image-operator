@@ -98,7 +98,7 @@ type: Opaque
 stringData:
   config.json: |
       {
-      "keyprotect-url":"https://us-south.kms.cloud.ibm.com",
-      "instance-id": "your bluemix instance ID",
-      "apikey": "apikey-for-accessing-unwrap-api"
+          "keyprotect-url":"<PLACEHOLDER: i.e. https://us-south.kms.cloud.ibm.com>",
+          "instance-id": "<PLACEHOLDER: your bluemix instance ID>",
+          "apikey": "<PLACEHOLDER: apikey-for-accessing-unwrap-api>"
       }

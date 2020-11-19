@@ -1,0 +1,153 @@
+# About
+
+This document shows an example of using the key protect feature to unwrap keys.
+
+
+## Requirements
+
+Base requirements include that as mentioned in the [README.md](/README.md), as 
+well as the following:
+
+- Access to Key Protect (KP)
+  - Know the key protect URL - i.e. https://us-south.kms.cloud.ibm.com/
+  - Have the bluemix instance ID for your KP instance
+  - Have an apikey to access the unwrap API for your KP instance (for your keys)
+- For this example, we will be using crio, therefore requires a cluster with 
+Kubernetes (>= 1.17) with cri-o runtime (>=1.17)
+
+
+## Deploying
+
+For this example, we will use the direct deployment which is supported. Observer
+the file `deploy/kp_deploy.yaml`, and note the configuration at the bottom of the
+file:
+
+```
+apiVersion: v1
+kind: Secret
+metadata:
+  name: keyprotect-config
+  namespace: enc-key-sync
+type: Opaque
+stringData:
+  config.json: |
+      {
+          "keyprotect-url":"<PLACEHOLDER: i.e. https://us-south.kms.cloud.ibm.com>",
+          "instance-id": "<PLACEHOLDER: your bluemix instance ID>",
+          "apikey": "<PLACEHOLDER: apikey-for-accessing-unwrap-api>"
+      }
+```
+
+This secret encapsulates the configuration required for keyprotect instance, 
+replace the place holder details in this file.
+
+Once that is done, deploy the operator on the cluster with `kubectl`. 
+By default, it will install the operator in the `enc-key-sync` namespace.
+```
+$ kubectl apply -f deploy/kp_deploy.yaml
+```
+
+Verify that the daemonset is running by observing the pods in the namespace:
+```
+$ kubectl -n enc-key-sync get pods
+NAME                 READY   STATUS    RESTARTS   AGE
+enc-key-sync-nt27j   1/1     Running   0          2m50s
+```
+
+
+## Creating a wrapped key
+
+As per the example in the README, we will use the same key, but we will wrap
+it with keyprotect so that it is only accessible by the daemonset and remains
+encrypted in transit:
+
+Create the private key file on disk
+```
+$ cat > my-priv-key.pem <<EOF
+-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEAv8Ny7dCWQ8Pdq1ddYSwkQOCB3lUEZVEyj9StX3jnISF/rxIs
+UZzJfbOrQN0fGkm+1sCCtltgQdztTjito8FhDGflqQBSmV40XP3iZnNUJDrHuAol
+463Z/BuxxFXL3ry6rTosLGfrRwdQjxp8RSsnWyIIO2rmcqXZYe4SCtiMjMejLlTI
+DWLIMdYL3d6hA4DpgDLoh6EPmhKMVVwRt5b0ew5eMLcDuq6ButOM5yv4zYVHNraj
+Y41NK+abSlFb6wzMg2AUDiC/MxV1LRq6mpyZGJllx3LS1M1j7fDO3pmh/M0X7yD/
+4RgHwFaW4/4CQBw3fyxrOv0pZzZay+o/pyMMWwIDAQABAoIBAQC8HV2HEZH21BOG
+W+PMyWKfCh4cHsZ7JZY2JmoVOCN0CsqY0XkMboPyfehHbyNtxF4jiSIxBZ59vd5F
+V7Bu7eroIpvWl+xva0xu1NfdrNEj4U2+qqXUnd0zRW+zrH6b+AQgnupqfV7+hJxw
+ZYj2yYiIC/CLaSi72xpOyR6F6TyndBVRFePoktfCsPcevQDTVeYEbTr9q52vwK3d
+nROr3bV+J2y5Glce/4A6yTknJoDNWcDFvy3Ai//5bpV2x38E+FNRRb1BfZN56/7M
+3bEvwLyJ2bvnEqAQ+7Z8+307aMiMr01s1IQLYvi5Z1fvNewoaj1yxjxfawPvcMtB
+YDg6soDRAoGBAOA8zv/a48WD+dCb9WFk4YtRqg3ZjwSRKT3Afsfkd5lGz8yRlGP4
+HXCP8nQ7c2TUEjqiQmtyxrq7yi5dacIzzZXAlS8ORA5BxCfrxzUBvuPKgGoxeozC
+/Xef7mJ6Si+JDIjY2GKwO8I66JgxScTi7JWlyXmQ26rY4/0Yg8f6Au8XAoGBANrt
+FPYVXn4S6VdAdhFzkx85ymQ+uX6yflRIUcmP5sySKMCPD1GSrVujDIgj485sEmH2
+h57gDWzFWLmEU6PDsG2Bpsi29w5MMibr4y7Ez6y1rNd9eor5lDIhKi2sJRA0Ftj1
+tBl31rhkJfCnzVIRn3Q+ZuvgTca7J9oUnCFBlfddAoGAUih1f3Dnu1qbkT9TLJgV
+u0H0mJZ5vCajgaihywN+fn5fbIh6YhZqUu+q2cNeiDbbZvhEdbHb9lcPwOUg9rKc
+RJ4HCvKjJMYb5LSSjG1TT4rGeiIe0Kwwyj+izBoaTEhee1VYEvCXNJb42apVaPnr
+zPitVQkqMvK8teLhhceog4kCgYA2M/C2pL/KcyA2rA0PcRAB8Sr8+tKuXb8NWwJ0
+5x37lExmsITYa3pkb9AQfOJQH03F12Xongx027+F3w9eQnsSAcGrfDFa5t6b6FdN
+IwlP94Mdr0GB2x0n9DIfMLnUczEc8mhuzc7pxFHobYNWSGq0Oyb8S4K2K2xIgEXP
+rg9VOQKBgQCvZXPe7uRyfeFxH9uexhPOZEYNpF8/SxeFnTmxoyDNgfTaT6wC0Vwt
+jALXNbZLiYen9cUBfusELk8chLna1tCvLDUTT0m/Y80d8p+S80EsZ20ja1A3HdBv
+h1TW/ep4aPeI0UE0ZNOifUB37IGXETO5fohbzm799dH8jtAkE02pww==
+-----END RSA PRIVATE KEY-----
+EOF
+```
+
+Because KP requires a base64 payload, we will base64 encode the file:
+```
+$ cat my-priv-key.pem| base64
+LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFcEFJQkFBS0NBUUVBdjhOeTdkQ1dROFBkcTFkZFlTd2tRT0NCM2xVRVpWRXlqOVN0WDNqbklTRi9yeElzClVaekpmYk9yUU4wZkdrbSsxc0NDdGx0Z1FkenRUaml0bzhGaERHZmxxUUJTbVY0MFhQM2labk5VSkRySHVBb2wKNDYzWi9CdXh4RlhMM3J5NnJUb3NMR2ZyUndkUWp4cDhSU3NuV3lJSU8ycm1jcVhaWWU0U0N0aU1qTWVqTGxUSQpEV0xJTWRZTDNkNmhBNERwZ0RMb2g2RVBtaEtNVlZ3UnQ1YjBldzVlTUxjRHVxNkJ1dE9NNXl2NHpZVkhOcmFqClk0MU5LK2FiU2xGYjZ3ek1nMkFVRGlDL014VjFMUnE2bXB5WkdKbGx4M0xTMU0xajdmRE8zcG1oL00wWDd5RC8KNFJnSHdGYVc0LzRDUUJ3M2Z5eHJPdjBwWnpaYXkrby9weU1NV3dJREFRQUJBb0lCQVFDOEhWMkhFWkgyMUJPRwpXK1BNeVdLZkNoNGNIc1o3SlpZMkptb1ZPQ04wQ3NxWTBYa01ib1B5ZmVoSGJ5TnR4RjRqaVNJeEJaNTl2ZDVGClY3QnU3ZXJvSXB2V2wreHZhMHh1MU5mZHJORWo0VTIrcXFYVW5kMHpSVyt6ckg2YitBUWdudXBxZlY3K2hKeHcKWllqMnlZaUlDL0NMYVNpNzJ4cE95UjZGNlR5bmRCVlJGZVBva3RmQ3NQY2V2UURUVmVZRWJUcjlxNTJ2d0szZApuUk9yM2JWK0oyeTVHbGNlLzRBNnlUa25Kb0ROV2NERnZ5M0FpLy81YnBWMngzOEUrRk5SUmIxQmZaTjU2LzdNCjNiRXZ3THlKMmJ2bkVxQVErN1o4KzMwN2FNaU1yMDFzMUlRTFl2aTVaMWZ2TmV3b2FqMXl4anhmYXdQdmNNdEIKWURnNnNvRFJBb0dCQU9BOHp2L2E0OFdEK2RDYjlXRms0WXRScWczWmp3U1JLVDNBZnNma2Q1bEd6OHlSbEdQNApIWENQOG5RN2MyVFVFanFpUW10eXhycTd5aTVkYWNJenpaWEFsUzhPUkE1QnhDZnJ4elVCdnVQS2dHb3hlb3pDCi9YZWY3bUo2U2krSkRJalkyR0t3TzhJNjZKZ3hTY1RpN0pXbHlYbVEyNnJZNC8wWWc4ZjZBdThYQW9HQkFOcnQKRlBZVlhuNFM2VmRBZGhGemt4ODV5bVErdVg2eWZsUklVY21QNXN5U0tNQ1BEMUdTclZ1akRJZ2o0ODVzRW1IMgpoNTdnRFd6RldMbUVVNlBEc0cyQnBzaTI5dzVNTWlicjR5N0V6Nnkxck5kOWVvcjVsREloS2kyc0pSQTBGdGoxCnRCbDMxcmhrSmZDbnpWSVJuM1ErWnV2Z1RjYTdKOW9VbkNGQmxmZGRBb0dBVWloMWYzRG51MXFia1Q5VExKZ1YKdTBIMG1KWjV2Q2FqZ2FpaHl3TitmbjVmYkloNlloWnFVdStxMmNOZWlEYmJadmhFZGJIYjlsY1B3T1VnOXJLYwpSSjRIQ3ZLakpNWWI1TFNTakcxVFQ0ckdlaUllMEt3d3lqK2l6Qm9hVEVoZWUxVllFdkNYTkpiNDJhcFZhUG5yCnpQaXRWUWtxTXZLOHRlTGhoY2VvZzRrQ2dZQTJNL0MycEwvS2N5QTJyQTBQY1JBQjhTcjgrdEt1WGI4Tld3SjAKNXgzN2xFeG1zSVRZYTNwa2I5QVFmT0pRSDAzRjEyWG9uZ3gwMjcrRjN3OWVRbnNTQWNHcmZERmE1dDZiNkZkTgpJd2xQOTRNZHIwR0IyeDBuOURJZk1MblVjekVjOG1odXpjN3B4RkhvYllOV1NHcTBPeWI4UzRLMksyeElnRVhQCnJnOVZPUUtCZ1FDdlpYUGU3dVJ5ZmVGeEg5dWV4aFBPWkVZTnBGOC9TeGVGblRteG95RE5nZlRhVDZ3QzBWd3QKakFMWE5iWkxpWWVuOWNVQmZ1c0VMazhjaExuYTF0Q3ZMRFVUVDBtL1k4MGQ4cCtTODBFc1oyMGphMUEzSGRCdgpoMVRXL2VwNGFQZUkwVUUwWk5PaWZVQjM3SUdYRVRPNWZvaGJ6bTc5OWRIOGp0QWtFMDJwd3c9PQotLS0tLUVORCBSU0EgUFJJVkFURSBLRVktLS0tLQo=
+```
+
+Follow the steps at https://cloud.ibm.com/docs/key-protect?topic=key-protect-wrap-keys,
+create a KP key and then, wrap the the payload above as the `plaintext` and setting `aad` as the empty list.
+An example would look like this (with the credentials masked):
+
+```
+curl --location --request POST 'https://us-south.kms.cloud.ibm.com/api/v2/keys/27b941a0-ab34-4b92-960d-30fa80f15bf0/actions/wrap' \
+--header 'bluemix-instance: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' \
+--header 'Content-Type: application/vnd.ibm.kms.key+json' \
+--header 'Authorization: Bearer xxxxxxxxxxxxxxxxxxx' \
+--data-raw '{
+    "plaintext": "LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFcEFJQkFBS0NBUUVBdjhOeTdkQ1dROFBkcTFkZFlTd2tRT0NCM2xVRVpWRXlqOVN0WDNqbklTRi9yeElzClVaekpmYk9yUU4wZkdrbSsxc0NDdGx0Z1FkenRUaml0bzhGaERHZmxxUUJTbVY0MFhQM2labk5VSkRySHVBb2wKNDYzWi9CdXh4RlhMM3J5NnJUb3NMR2ZyUndkUWp4cDhSU3NuV3lJSU8ycm1jcVhaWWU0U0N0aU1qTWVqTGxUSQpEV0xJTWRZTDNkNmhBNERwZ0RMb2g2RVBtaEtNVlZ3UnQ1YjBldzVlTUxjRHVxNkJ1dE9NNXl2NHpZVkhOcmFqClk0MU5LK2FiU2xGYjZ3ek1nMkFVRGlDL014VjFMUnE2bXB5WkdKbGx4M0xTMU0xajdmRE8zcG1oL00wWDd5RC8KNFJnSHdGYVc0LzRDUUJ3M2Z5eHJPdjBwWnpaYXkrby9weU1NV3dJREFRQUJBb0lCQVFDOEhWMkhFWkgyMUJPRwpXK1BNeVdLZkNoNGNIc1o3SlpZMkptb1ZPQ04wQ3NxWTBYa01ib1B5ZmVoSGJ5TnR4RjRqaVNJeEJaNTl2ZDVGClY3QnU3ZXJvSXB2V2wreHZhMHh1MU5mZHJORWo0VTIrcXFYVW5kMHpSVyt6ckg2YitBUWdudXBxZlY3K2hKeHcKWllqMnlZaUlDL0NMYVNpNzJ4cE95UjZGNlR5bmRCVlJGZVBva3RmQ3NQY2V2UURUVmVZRWJUcjlxNTJ2d0szZApuUk9yM2JWK0oyeTVHbGNlLzRBNnlUa25Kb0ROV2NERnZ5M0FpLy81YnBWMngzOEUrRk5SUmIxQmZaTjU2LzdNCjNiRXZ3THlKMmJ2bkVxQVErN1o4KzMwN2FNaU1yMDFzMUlRTFl2aTVaMWZ2TmV3b2FqMXl4anhmYXdQdmNNdEIKWURnNnNvRFJBb0dCQU9BOHp2L2E0OFdEK2RDYjlXRms0WXRScWczWmp3U1JLVDNBZnNma2Q1bEd6OHlSbEdQNApIWENQOG5RN2MyVFVFanFpUW10eXhycTd5aTVkYWNJenpaWEFsUzhPUkE1QnhDZnJ4elVCdnVQS2dHb3hlb3pDCi9YZWY3bUo2U2krSkRJalkyR0t3TzhJNjZKZ3hTY1RpN0pXbHlYbVEyNnJZNC8wWWc4ZjZBdThYQW9HQkFOcnQKRlBZVlhuNFM2VmRBZGhGemt4ODV5bVErdVg2eWZsUklVY21QNXN5U0tNQ1BEMUdTclZ1akRJZ2o0ODVzRW1IMgpoNTdnRFd6RldMbUVVNlBEc0cyQnBzaTI5dzVNTWlicjR5N0V6Nnkxck5kOWVvcjVsREloS2kyc0pSQTBGdGoxCnRCbDMxcmhrSmZDbnpWSVJuM1ErWnV2Z1RjYTdKOW9VbkNGQmxmZGRBb0dBVWloMWYzRG51MXFia1Q5VExKZ1YKdTBIMG1KWjV2Q2FqZ2FpaHl3TitmbjVmYkloNlloWnFVdStxMmNOZWlEYmJadmhFZGJIYjlsY1B3T1VnOXJLYwpSSjRIQ3ZLakpNWWI1TFNTakcxVFQ0ckdlaUllMEt3d3lqK2l6Qm9hVEVoZWUxVllFdkNYTkpiNDJhcFZhUG5yCnpQaXRWUWtxTXZLOHRlTGhoY2VvZzRrQ2dZQTJNL0MycEwvS2N5QTJyQTBQY1JBQjhTcjgrdEt1WGI4Tld3SjAKNXgzN2xFeG1zSVRZYTNwa2I5QVFmT0pRSDAzRjEyWG9uZ3gwMjcrRjN3OWVRbnNTQWNHcmZERmE1dDZiNkZkTgpJd2xQOTRNZHIwR0IyeDBuOURJZk1MblVjekVjOG1odXpjN3B4RkhvYllOV1NHcTBPeWI4UzRLMksyeElnRVhQCnJnOVZPUUtCZ1FDdlpYUGU3dVJ5ZmVGeEg5dWV4aFBPWkVZTnBGOC9TeGVGblRteG95RE5nZlRhVDZ3QzBWd3QKakFMWE5iWkxpWWVuOWNVQmZ1c0VMazhjaExuYTF0Q3ZMRFVUVDBtL1k4MGQ4cCtTODBFc1oyMGphMUEzSGRCdgpoMVRXL2VwNGFQZUkwVUUwWk5PaWZVQjM3SUdYRVRPNWZvaGJ6bTc5OWRIOGp0QWtFMDJwd3c9PQotLS0tLUVORCBSU0EgUFJJVkFURSBLRVktLS0tLQo=",
+    "aad": []
+}'
+```
+
+The response will be in the following format, we will store this into the file `wrapped-key`.
+
+```
+{
+    "ciphertext": "eyJjaXBoZXJ0ZXh0IjoiTlRJa1p2UXI1dFhhNnRKUU9zNlY5K0hGc0lmTzZZL1lYVFNiN1FIUHlpR1M1RzhqNnhNMG9jdnM2TVVCaTc5YTNsL1JhYzFqS3Vab0tnbzYvak1zUzVZRE9CSWg1Q04rclVLSi9mQmcxL0V2SmhHTzJBRm1Tb0Q0SDVoZElwZjBwSmE0ZkMwVldybSs1WlNQSlFJbHlmSWNDYUVRbjZ4OWhmWGt3NW1xRWU0dDAvcUZ4WEhXb0p5NXIvYjg5NXpCTHBaSVdtN3dENkVmUXdSby9rSEhpUXRwQ1FrN1Y1Y3F3MzkxVjI2K1FhSlRjeWZsVVVzZmVYMnpMVThkZjM4Wk4yMWV2TFpnWkxLY0VNZGxCUmhuL0pDS3NjalNrdFZHTWhKZEtLSUVGMEdRQzBvT1V5Z0xlM2g1Y3dUM1c2ZUI0bmtLSDB4anVoVlRDaGhZUHZkYXdmQTEzVlBwVTFyc2t2UmovZVpZbEdGc0ZWbVZ1amg3UEZ4NThrUmpuSm9VOVJydzZqSTRoZHFMckpjQXFOZE91VkM3NGE2Um1mb0liN3hwdkxOai9mR0hMdTZoTjFNZHo0RHFxTFBuLy9ZYTNwV2FhVWdtOW9aT25NV2JPRVgvc04wTkpobFZZTjFTQnArU2FoVjgxcEdqeEVPZTVJZGtGVWNYbmV5dTZxOUN2S1BWWUtwaDExOTVYNmtCZytOT21BWTBZOWFyd3QybzZmSGRPUEY0M2NBcmsySjZ5ajVhM1ZMUVQ2VkRGQ3ZPNzZYdSt5WTFPeDZxcHpTYlcvRW1Jd2gvRUdrUU5GWkJycFlNemVYYnZ5SDdoemJ4VGxFaU1ycUY0aVE2b1dHSjBnWkloTHVSa292aGdMTVVjMmhpYWVuTG5uRUljMVVNUWFWbmZlS1RpMC8zOHVYeFgwck5uOXJNRng1L1hZeG9OblBIU1ZRL1p1bHpxSE5QTWFRZHVwZVlEZGRPZXNBdGllR3RndkQ4YXJXREV0Y3NZOUdkV2pzWlRhTWZwM2RGMUcvWlZoSmVQbWFGb3U1VmdjYmdVWWl1RGxtNW5PMEt6OWdXSHZHdldTU3k0QlBuV3EwcUw0cHhOVVFmTTF2a3FENDI0M0NidEM3Z3hrM3VnOEdtUjBKZ0VpeGF2SWNtdEVMdUQrZzhBbXZ2Y3VtejEwL2lYZU91Qk9zcXczcG5wc1ZCM1NyQTdNbXRzSmd1UnJqS2dDRWxJUzkvanBRUlltVHUyYjQ2VVp1ZFBxZDVsK2RYcmlIQ3I1RzhueVJZRUFaT1RnVkdBVEc2QUlLbDE4aXJUUEVkOVlqaG9RS0NERlJPVWdVQXU0Qm1DcTloWFU5SUVkQjhtRVNwL0hZc3gwT0FOQXNQRlNlaUhTVWFqOXBCRVFJOGVNTHB2TTJrRk9DZ0t6aFhZUm9ncG9STW05SDFCdy9tOC9rcXRIbzJKWGdKbnFxQ201WmMvVjh0MGxFeExGSi9HK1J2NkdBanpqc0E0WENTWVFFUGd3am83ek5kZ3ZFeXVaQzBwMldGbDJ2UFpjMC85MDVtTk9vVTVUNjcrcUtneG1xYXpUWVdRWHh3ZVl4ZzdkSkNsOG9SRFpOMThDYVZJMUsvZGg0eFFwMDNrRGUrNDJLT1lpRFJ0azFmVlhlejNMV2Y3VkJtTWhza2cyNURDaExPSHZFNlFqNy9MN0hISDhQOS9ZTkpub3I0cUx4M3N4STRmVVhSSjhtdWYrbmJjNFgvOXo5a1BIWUthdXAzWWEwSHJkQ1pmR21YZ0V3cVBHZTZta2lYVGt3UERmM2l5RVhYUldhOFVFNllxNUVEb2FhOWJpQ0VMZXhBNElxVHdjdXpycm1Qc2FPYi9UaGhGM1pvdDk0eGtiSTR3amg2V2tMK2N6QzZCaldFMjFDaUF2L2p0YXJJMzJ6NFV6QUxuUWlqNEFJTUxMazhuU25nMVkyZ2N2aVYwYmh4QWFucWFHTU5kWXhUOTBIdTBQekNJbGxUa3kxbnpEV2FBbS9EU1Q0R0lOMVZYSlpnSittcElzZm8vTVJJRnNhaFNBVEh1L1VoeFBqTFNsbmpzTzdrekwwWG5vL25xbDR2OHhYekJjcU55dHovcDdhNFk3VUl1cG81YUhZTHVGUFE4cHUrdFFYR1k1V2VYcXg3eWU4QkZ6Yk5vamJiR2Q4RmcvTDVXcFZCSmlocWxESy9GL1N5em9wQTBtRTR5VmhqL1BjNlVhZmpVNzJBVkhUem9UK1pac0IvdE1sUGJteVVxclIvL0xTVnJVam9mOWFzeVNwdUpWRjM2NkZjcTU1cWZJWXBWNHFMNi9QSlBMQVlsaUNrTlBGYTJzUnRGaXM1eG05ZkhtMU9YTnUrWno3bXpLWHFQT0pSVGY5cTZqQWhIVDNSZUtNbTdySW03RzZFT05EVktabkR4MXk1MENsQWdueHp6UHRjWWxHdXdIdU1PaU1EU3NwODAzL2U2V09CdXFJL3o3RUdKOEttZjBBS2ZlVkNGNnRqbkUwdmRTT29rbjdZbUxQc25STEhBNmhmUFdsZFE2TWE4Sno1eTVPN2xxdzJobk1pWVpxN3VETEhCZXZpVUdBUDFxN1pJRE1BU1FleHlDV2I3UWRNc1RUNnhOYTB6b3JQWGJSaHJtNFlrQnRtYmtRK29pWGE5UmRPNDU4UDFyRXNDdTJaWlV5cndJL1RyTGxaQ2h5WWZSSDgxNjg2aTEzVjRKaXBNTXh2ZnljcGVPSUN4SUhZVnZtR1lOUEJTbGgrdVV5Tmp6blpIQUlJSnkvOC9mOGxWaUFMaWtBLzdYQk5LZUNlY2pKTSs4cE93RlRaTStCTFhFaEsyNUJtT0c0YVh1T0V0bWZnajMzc3A2bnMvU1NjdCtMZDRjNWVKQUVEd2F6SVNaQ0xFZm9zVllUT09EdUI0UU5MUENmTnNpUlVvVTlZa0tLTkI3UHZrTVh6RStFR0hSa2xQU1VMNktJSHROaXpMb3c4MWlWUXI5Tno4dk09IiwiaXYiOiJMeHFwWGlOc2VlOWxrYTB6IiwidmVyc2lvbiI6IjQuMC4wIiwiaGFuZGxlIjoiMjdiOTQxYTAtYWIzNC00YjkyLTk2MGQtMzBmYTgwZjE1YmYwIn0=",
+    "keyVersion": {
+        "id": "27b941a0-ab34-4b92-960d-30fa80f15bf0"
+    }
+}
+```
+
+## Putting the wrapped key into cluster
+
+We can then create a secret with this wrapped key with the secret type `type=kp-key` for keyprotect key
+
+```
+kubectl create -n enc-key-sync secret generic \
+  --type=kp-key \
+  --from-file=wrapped-key \
+  my-wrapped-kp-key
+```
+
+
+After waiting a while, we can see the logs that the key is being synced
+
+```
+$ kubectl -n enc-key-sync logs enc-key-sync-nt27j
+W1119 02:40:26.700451       1 client_config.go:543] Neither --kubeconfig nor --master was specified.  Using the inClusterConfig.  This might not work.
+time="2020-11-19T02:40:26Z" level=info msg="Starting KeySync server with sync-dir /keys, interval 10ns s, namespace enc-key-sync, specialHandlers: map[kp-key:0x1130980]"
+time="2020-11-19T02:40:37Z" level=info msg="Syncing new key: aa6aa339f188ac95e64f272bd085679a-enc-key-sync-my-wrapped-kp-key-wrapped-key"
+```
+
+We should now be able to run the encrypted image
+```
+$ kubectl run enc-workload --image=docker.io/lumjjb/sample-enc-app
+```

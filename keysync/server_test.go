@@ -149,7 +149,8 @@ func TestKeySyncSpecialSecretHandlers(t *testing.T) {
 	// https://github.com/kubernetes/kubernetes/issues/78824
 	// Therefore, this is a quick hack to prevent a list with type=key to return
 	// the base64-key.
-	// TODO: Create a more generic framework for fakeclient to implement field
+	// TODO: https://github.com/IBM/k8s-enc-image-operator/issues/14
+	// Create a more generic framework for fakeclient to implement field
 	// selectors on secrets
 	fakeClient.PrependReactor("list", "secrets", func(action coretesting.Action) (handled bool, ret runtime.Object, err error) {
 		switch la := action.(type) {

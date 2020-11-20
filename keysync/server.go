@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/lumjjb/k8s-enc-image-operator/keysync/sechandlers"
@@ -79,17 +80,27 @@ type KeySyncServer struct {
 	// i.e. "kp-key" would be a map to secrets with "type=kp-key"
 	// to a handler of how the secret data will be translated to the key file.
 	keyHandlers map[string]sechandlers.SecretKeyHandler
+
+	// addKeyHandlers is a workspace map for adding new key handlers, we use
+	// a separate map since it introduces concurrency, and so we want to minimize
+	// locking to the addKeyHandler map instead of the main one
+	addKeyHandlers map[string]sechandlers.SecretKeyHandler
+
+	// addKeyHandlersMutex to handle concurrency for addKeyHandlers
+	addKeyHandlersMutex *sync.Mutex
 }
 
 func NewKeySyncServer(ksc KeySyncServerConfig) *KeySyncServer {
 	ks := KeySyncServer{
-		k8sClient:  ksc.K8sClient,
-		interval:   ksc.Interval,
-		keySyncDir: ksc.KeySyncDir,
-		namespace:  ksc.Namespace,
+		k8sClient:           ksc.K8sClient,
+		interval:            ksc.Interval,
+		keySyncDir:          ksc.KeySyncDir,
+		namespace:           ksc.Namespace,
+		keyHandlers:         map[string]sechandlers.SecretKeyHandler{},
+		addKeyHandlers:      map[string]sechandlers.SecretKeyHandler{},
+		addKeyHandlersMutex: &sync.Mutex{},
 	}
 
-	ks.keyHandlers = map[string]sechandlers.SecretKeyHandler{}
 	for k, v := range ksc.SpecialKeyHandlers {
 		ks.keyHandlers[k] = v
 	}
@@ -101,13 +112,22 @@ func NewKeySyncServer(ksc KeySyncServerConfig) *KeySyncServer {
 }
 
 // Start begins running the KeySyncServer according to the parameters
-// specified
+// specified.
+// Only one instance of Start should be run per KeySyncServer
 func (ks *KeySyncServer) Start() error {
 	secClient := ks.k8sClient.CoreV1().Secrets(ks.namespace)
 
 	// Create channel for immediate call for the first time
 	for {
 		<-time.After(ks.interval)
+
+		// Check if new handlers to add
+		ks.addKeyHandlersMutex.Lock()
+		for k, v := range ks.addKeyHandlers {
+			ks.keyHandlers[k] = v
+		}
+		ks.addKeyHandlers = map[string]sechandlers.SecretKeyHandler{}
+		ks.addKeyHandlersMutex.Unlock()
 
 		// Get list of new keys so that we can clean up obselete keys for revocation reasons
 		allFilenameMap := map[string]bool{}
@@ -128,6 +148,15 @@ func (ks *KeySyncServer) Start() error {
 		// Purge keys which are not new
 		ks.cleanupKeys(allFilenameMap)
 	}
+}
+
+// AddKeyHandler will queue adding new handlers to the key sync server that will
+// take effect on the next sync.
+func (ks *KeySyncServer) AddSecretKeyHandler(secretType string, skh sechandlers.SecretKeyHandler) {
+	ks.addKeyHandlersMutex.Lock()
+	defer ks.addKeyHandlersMutex.Unlock()
+
+	ks.addKeyHandlers[secretType] = skh
 }
 
 // combineFilenameMap returns a map that combines the contents of both f1 and f2

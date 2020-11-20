@@ -47,12 +47,13 @@ func TestKeySync(t *testing.T) {
 		interval   = 5 * time.Second
 	)
 
-	kss := KeySyncServer{
+	ksc := KeySyncServerConfig{
 		K8sClient:  fakeClient,
 		Interval:   interval,
 		KeySyncDir: tmpDir,
 		Namespace:  namespace,
 	}
+	kss := NewKeySyncServer(ksc)
 
 	var kssErr error
 	go func() { kssErr = kss.Start() }()
@@ -176,7 +177,7 @@ func TestKeySyncSpecialSecretHandlers(t *testing.T) {
 		return retmap, nil
 	}
 
-	kss := KeySyncServer{
+	ksc := KeySyncServerConfig{
 		K8sClient:  fakeClient,
 		Interval:   interval,
 		KeySyncDir: tmpDir,
@@ -186,6 +187,7 @@ func TestKeySyncSpecialSecretHandlers(t *testing.T) {
 		},
 	}
 
+	kss := NewKeySyncServer(ksc)
 	var kssErr error
 	go func() { kssErr = kss.Start() }()
 

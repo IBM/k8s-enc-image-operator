@@ -34,9 +34,9 @@ const (
 	keyTypeFieldSelectorPrefix = "type="
 )
 
-// KeySyncServer contains the parameters required for operation of the
+// KeySyncServerConfig contains the parameters required for operation of the
 // key sync server
-type KeySyncServer struct {
+type KeySyncServerConfig struct {
 	// K8sClient is the k8s clientset to interface with the kubernetes
 	// cluster
 	K8sClient clientset.Interface
@@ -58,25 +58,61 @@ type KeySyncServer struct {
 	SpecialKeyHandlers map[string]sechandlers.SecretKeyHandler
 }
 
+// KeySyncServer represents the server to perform key syncing
+type KeySyncServer struct {
+	// k8sClient is the k8s clientset to interface with the kubernetes
+	// cluster
+	k8sClient clientset.Interface
+
+	// interval is the query interval in which to sync the decryption keys
+	interval time.Duration
+
+	// keySyncDir specifies the directory where keys are synced to
+	keySyncDir string
+
+	// namespace specifies the namespace where key secrets are stored
+	namespace string
+
+	// keyHandlers handles non-standard keys with additional requirements
+	// such as requiring a remote unwrapping service, or talking to a HSM, etc.
+	// The map contains a mapping of key type of the secret that it handles,
+	// i.e. "kp-key" would be a map to secrets with "type=kp-key"
+	// to a handler of how the secret data will be translated to the key file.
+	keyHandlers map[string]sechandlers.SecretKeyHandler
+}
+
+func NewKeySyncServer(ksc KeySyncServerConfig) *KeySyncServer {
+	ks := KeySyncServer{
+		k8sClient:  ksc.K8sClient,
+		interval:   ksc.Interval,
+		keySyncDir: ksc.KeySyncDir,
+		namespace:  ksc.Namespace,
+	}
+
+	ks.keyHandlers = map[string]sechandlers.SecretKeyHandler{}
+	for k, v := range ksc.SpecialKeyHandlers {
+		ks.keyHandlers[k] = v
+	}
+
+	// add the regular key type to the list of special key handlers
+	ks.keyHandlers["key"] = sechandlers.RegularKeyHandler
+
+	return &ks
+}
+
 // Start begins running the KeySyncServer according to the parameters
 // specified
 func (ks *KeySyncServer) Start() error {
-	secClient := ks.K8sClient.CoreV1().Secrets(ks.Namespace)
-
-	if ks.SpecialKeyHandlers == nil {
-		ks.SpecialKeyHandlers = map[string]sechandlers.SecretKeyHandler{}
-	}
-	// add the regular key type to the list of special key handlers
-	ks.SpecialKeyHandlers["key"] = sechandlers.RegularKeyHandler
+	secClient := ks.k8sClient.CoreV1().Secrets(ks.namespace)
 
 	// Create channel for immediate call for the first time
 	for {
-		<-time.After(ks.Interval)
+		<-time.After(ks.interval)
 
 		// Get list of new keys so that we can clean up obselete keys for revocation reasons
 		allFilenameMap := map[string]bool{}
 
-		for secType, skh := range ks.SpecialKeyHandlers {
+		for secType, skh := range ks.keyHandlers {
 			secList, err := secClient.List(metav1.ListOptions{
 				FieldSelector: keyTypeFieldSelectorPrefix + secType,
 			})
@@ -144,7 +180,7 @@ func (ks *KeySyncServer) syncSecretsToLocalKeys(secList *corev1.SecretList, skh 
 			filenameMap[filename] = true
 
 			// Write file to directory if file doesn't already exist
-			path := filepath.Join(ks.KeySyncDir, filename)
+			path := filepath.Join(ks.keySyncDir, filename)
 			if !fileExists(path) {
 				logrus.Printf("Syncing new key: %v", filename)
 				err := ioutil.WriteFile(path, data, 0600)
@@ -160,7 +196,7 @@ func (ks *KeySyncServer) syncSecretsToLocalKeys(secList *corev1.SecretList, skh 
 
 func (ks *KeySyncServer) cleanupKeys(filenameMap map[string]bool) {
 	// Do cleanup of files that are not part of current secrets
-	files, err := ioutil.ReadDir(ks.KeySyncDir)
+	files, err := ioutil.ReadDir(ks.keySyncDir)
 	if err != nil {
 		files = []os.FileInfo{}
 		logrus.Errorf("Unable to list directory for cleanup")
@@ -171,7 +207,7 @@ func (ks *KeySyncServer) cleanupKeys(filenameMap map[string]bool) {
 	for _, file := range files {
 		filename := file.Name()
 		if !filenameMap[filename] {
-			path := filepath.Join(ks.KeySyncDir, filename)
+			path := filepath.Join(ks.keySyncDir, filename)
 			logrus.Printf("Deleting old key: %v", filename)
 			if err = os.Remove(path); err != nil {
 				logrus.Errorf("Unable to delete old key %v, %v", path, err)

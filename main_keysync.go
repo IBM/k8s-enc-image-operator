@@ -77,19 +77,20 @@ func main() {
 		skh["kp-key"] = kpskh
 	}
 
-	ks := &keysync.KeySyncServer{
+	ksc := keysync.KeySyncServerConfig{
 		K8sClient:          clientset,
 		Interval:           time.Duration(inputFlags.interval) * time.Second,
 		KeySyncDir:         inputFlags.dir,
 		Namespace:          namespace,
 		SpecialKeyHandlers: skh,
 	}
+	ks := keysync.NewKeySyncServer(ksc)
 
 	logrus.Printf("Starting KeySync server with sync-dir %v, interval %v s, namespace %v, specialHandlers: %+v",
-		ks.KeySyncDir,
-		ks.Interval/time.Second,
-		ks.Namespace,
-		ks.SpecialKeyHandlers)
+		ksc.KeySyncDir,
+		ksc.Interval/time.Second,
+		ksc.Namespace,
+		ksc.SpecialKeyHandlers)
 
 	if err := ks.Start(); err != nil {
 		logrus.Fatalf("KeySync failure: %v", err)

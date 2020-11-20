@@ -77,7 +77,7 @@ func main() {
 		if err == nil {
 			skh["kp-key"] = kpskh
 		} else if inputFlags.keyprotectConfigOptional {
-			logrus.Printf("Unable to load keyprotect config: %v", err)
+			logrus.Printf("Unable to load keyprotect config: %v, restart required for reload", err)
 		} else {
 			panic(err)
 		}

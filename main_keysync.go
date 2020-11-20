@@ -25,7 +25,9 @@ import (
 
 	keyprotect "github.com/lumjjb/k8s-enc-image-operator/keyprotect"
 	"github.com/lumjjb/k8s-enc-image-operator/keysync"
-	"github.com/lumjjb/k8s-enc-image-operator/keysync/sechandlers"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientset "k8s.io/client-go/kubernetes"
 )
 
 const (
@@ -34,15 +36,17 @@ const (
 
 func main() {
 	inputFlags := struct {
-		kubeconfig       string
-		interval         uint
-		dir              string
-		keyprotectConfig string
+		kubeconfig                 string
+		interval                   uint
+		dir                        string
+		keyprotectConfigFile       string
+		keyprotectConfigKubeSecret string
 	}{
-		kubeconfig:       "",
-		interval:         10,
-		dir:              "/tmp/keys",
-		keyprotectConfig: "",
+		kubeconfig:                 "",
+		interval:                   10,
+		dir:                        "/tmp/keys",
+		keyprotectConfigFile:       "",
+		keyprotectConfigKubeSecret: "",
 	}
 
 	flag.StringVar(&inputFlags.kubeconfig, "kubeconfig", inputFlags.kubeconfig,
@@ -51,9 +55,10 @@ func main() {
 		"(optional) interval to sync decryption keys (in seconds)")
 	flag.StringVar(&inputFlags.dir, "dir", inputFlags.dir,
 		"(optional) directory to sync keys to")
-	flag.StringVar(&inputFlags.keyprotectConfig, "keyprotectConfig", inputFlags.keyprotectConfig,
+	flag.StringVar(&inputFlags.keyprotectConfigFile, "keyprotectConfigFile", inputFlags.keyprotectConfigFile,
 		"(optional) config file for keyprotect enablement")
-
+	flag.StringVar(&inputFlags.keyprotectConfigKubeSecret, "keyprotectConfigKubeSecret", inputFlags.keyprotectConfigKubeSecret,
+		"(optional) kube secret name for config file for keyprotect enablement")
 	flag.Parse()
 
 	config, err := clientcmd.BuildConfigFromFlags("", inputFlags.kubeconfig)
@@ -66,25 +71,42 @@ func main() {
 	}
 
 	namespace := os.Getenv(NamespaceEnv)
+	interval := time.Duration(inputFlags.interval) * time.Second
 
-	skh := map[string]sechandlers.SecretKeyHandler{}
+	ksc := keysync.KeySyncServerConfig{
+		K8sClient:  clientset,
+		Interval:   interval,
+		KeySyncDir: inputFlags.dir,
+		Namespace:  namespace,
+	}
+	ks := keysync.NewKeySyncServer(ksc)
 
-	if inputFlags.keyprotectConfig != "" {
-		kpskh, err := keyprotect.GetSecKeyHandlerFromConfig(inputFlags.keyprotectConfig)
+	if inputFlags.keyprotectConfigFile != "" {
+		kpskh, err := keyprotect.GetSecKeyHandlerFromConfigFile(inputFlags.keyprotectConfigFile)
 		if err != nil {
 			panic(err)
 		}
-		skh["kp-key"] = kpskh
+		ks.AddSecretKeyHandler("kp-key", kpskh)
+	} else if inputFlags.keyprotectConfigKubeSecret != "" {
+		go keyprotectConfigKubeSecretThread(clientset, namespace, inputFlags.keyprotectConfigKubeSecret, ks, interval)
+		/*
+			secClient := clientset.CoreV1().Secrets(namespace)
+			s, err := secClient.Get(inputFlags.keyprotectConfigKubeSecret, metav1.GetOptions{})
+			if err != nil {
+				panic(err)
+			}
+			if s.Data != nil {
+				d := s.Data["config.json"]
+				if len(d) > 0 {
+					kpskh, err := keyprotect.GetSecKeyHandlerFromConfig(d)
+					if err != nil {
+						panic(err)
+					}
+					ks.AddSecretKeyHandler("kp-key", kpskh)
+				}
+			}
+		*/
 	}
-
-	ksc := keysync.KeySyncServerConfig{
-		K8sClient:          clientset,
-		Interval:           time.Duration(inputFlags.interval) * time.Second,
-		KeySyncDir:         inputFlags.dir,
-		Namespace:          namespace,
-		SpecialKeyHandlers: skh,
-	}
-	ks := keysync.NewKeySyncServer(ksc)
 
 	logrus.Printf("Starting KeySync server with sync-dir %v, interval %v s, namespace %v, specialHandlers: %+v",
 		ksc.KeySyncDir,
@@ -94,5 +116,44 @@ func main() {
 
 	if err := ks.Start(); err != nil {
 		logrus.Fatalf("KeySync failure: %v", err)
+	}
+}
+
+// keyprotectConfigKubeSecretThread is a helper function that tries to retrieve the kube secret containing the
+// keyprotect config and add the handler to the key sync server. Meant to run as a thread.
+func keyprotectConfigKubeSecretThread(clientset clientset.Interface, namespace string, secretName string, ks *keysync.KeySyncServer, interval time.Duration) {
+	first := true
+	oldData := ""
+	for {
+		if !first {
+			<-time.After(interval)
+		} else {
+			first = false
+		}
+
+		secClient := clientset.CoreV1().Secrets(namespace)
+		s, err := secClient.Get(secretName, metav1.GetOptions{})
+		if err != nil {
+			continue
+		}
+
+		if s.Data != nil {
+			d := s.Data["config.json"]
+			if len(d) > 0 {
+				if string(d) == oldData {
+					continue
+				}
+				oldData = string(d)
+
+				logrus.Printf("New keyprotect config detected in secrets, configuring...")
+				kpskh, err := keyprotect.GetSecKeyHandlerFromConfig(d)
+				if err != nil {
+					// log err
+					logrus.Errorf("Unable to parse keyprotect config: %v", err)
+					continue
+				}
+				ks.AddSecretKeyHandler("kp-key", kpskh)
+			}
+		}
 	}
 }

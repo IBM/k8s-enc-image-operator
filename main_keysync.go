@@ -34,15 +34,17 @@ const (
 
 func main() {
 	inputFlags := struct {
-		kubeconfig       string
-		interval         uint
-		dir              string
-		keyprotectConfig string
+		kubeconfig               string
+		interval                 uint
+		dir                      string
+		keyprotectConfig         string
+		keyprotectConfigOptional bool
 	}{
-		kubeconfig:       "",
-		interval:         10,
-		dir:              "/tmp/keys",
-		keyprotectConfig: "",
+		kubeconfig:               "",
+		interval:                 10,
+		dir:                      "/tmp/keys",
+		keyprotectConfig:         "",
+		keyprotectConfigOptional: false,
 	}
 
 	flag.StringVar(&inputFlags.kubeconfig, "kubeconfig", inputFlags.kubeconfig,
@@ -53,7 +55,8 @@ func main() {
 		"(optional) directory to sync keys to")
 	flag.StringVar(&inputFlags.keyprotectConfig, "keyprotectConfig", inputFlags.keyprotectConfig,
 		"(optional) config file for keyprotect enablement")
-
+	flag.BoolVar(&inputFlags.keyprotectConfigOptional, "keyprotectConfigOptional", inputFlags.keyprotectConfigOptional,
+		"(optional) skip enablement of keyprotect if config file doesn't exist")
 	flag.Parse()
 
 	config, err := clientcmd.BuildConfigFromFlags("", inputFlags.kubeconfig)
@@ -71,10 +74,13 @@ func main() {
 
 	if inputFlags.keyprotectConfig != "" {
 		kpskh, err := keyprotect.GetSecKeyHandlerFromConfig(inputFlags.keyprotectConfig)
-		if err != nil {
+		if err == nil {
+			skh["kp-key"] = kpskh
+		} else if inputFlags.keyprotectConfigOptional {
+			logrus.Printf("Unable to load keyprotect config: %v", err)
+		} else {
 			panic(err)
 		}
-		skh["kp-key"] = kpskh
 	}
 
 	ks := &keysync.KeySyncServer{

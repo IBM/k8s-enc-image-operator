@@ -50,13 +50,6 @@ type KeySyncServerConfig struct {
 
 	// Namespace specifies the namespace where key secrets are stored
 	Namespace string
-
-	// SpecialKeyHandlers handles non-standard keys with additional requirements
-	// such as requiring a remote unwrapping service, or talking to a HSM, etc.
-	// The map contains a mapping of key type of the secret that it handles,
-	// i.e. "kp-key" would be a map to secrets with "type=kp-key"
-	// to a handler of how the secret data will be translated to the key file.
-	SpecialKeyHandlers map[string]sechandlers.SecretKeyHandler
 }
 
 // KeySyncServer represents the server to perform key syncing
@@ -99,10 +92,6 @@ func NewKeySyncServer(ksc KeySyncServerConfig) *KeySyncServer {
 		keyHandlers:         map[string]sechandlers.SecretKeyHandler{},
 		addKeyHandlers:      map[string]sechandlers.SecretKeyHandler{},
 		addKeyHandlersMutex: &sync.Mutex{},
-	}
-
-	for k, v := range ksc.SpecialKeyHandlers {
-		ks.keyHandlers[k] = v
 	}
 
 	// add the regular key type to the list of special key handlers
@@ -152,6 +141,11 @@ func (ks *KeySyncServer) Start() error {
 
 // AddKeyHandler will queue adding new handlers to the key sync server that will
 // take effect on the next sync.
+// SecretKeyHandlers handles non-standard keys with additional requirements
+// such as requiring a remote unwrapping service, or talking to a HSM, etc.
+// The map contains a mapping of key type of the secret that it handles,
+// i.e. "kp-key" would be a map to secrets with "type=kp-key"
+// to a handler of how the secret data will be translated to the key file.
 func (ks *KeySyncServer) AddSecretKeyHandler(secretType string, skh sechandlers.SecretKeyHandler) {
 	ks.addKeyHandlersMutex.Lock()
 	defer ks.addKeyHandlersMutex.Unlock()

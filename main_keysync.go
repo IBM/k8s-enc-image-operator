@@ -108,11 +108,10 @@ func main() {
 		*/
 	}
 
-	logrus.Printf("Starting KeySync server with sync-dir %v, interval %v s, namespace %v, specialHandlers: %+v",
+	logrus.Printf("Starting KeySync server with sync-dir %v, interval %v s, namespace %v",
 		ksc.KeySyncDir,
 		ksc.Interval/time.Second,
-		ksc.Namespace,
-		ksc.SpecialKeyHandlers)
+		ksc.Namespace)
 
 	if err := ks.Start(); err != nil {
 		logrus.Fatalf("KeySync failure: %v", err)

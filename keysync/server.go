@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/lumjjb/k8s-enc-image-operator/keysync/sechandlers"
@@ -50,6 +51,15 @@ type KeySyncServerConfig struct {
 
 	// Namespace specifies the namespace where key secrets are stored
 	Namespace string
+
+	// KeyFilePermissions specifies the permissions to set on the created files
+	KeyFilePermissions os.FileMode
+
+	// KeyFileOwnerUID specifies the owner UID to set on the created files
+	KeyFileOwnerUID int
+
+	// KeyFileOwnerGID specifies the owner GID to set on the created files
+	KeyFileOwnerGID int
 }
 
 // KeySyncServer represents the server to perform key syncing
@@ -66,6 +76,15 @@ type KeySyncServer struct {
 
 	// namespace specifies the namespace where key secrets are stored
 	namespace string
+
+	// keyFilePermissions specifies the permissions to set on the created files
+	keyFilePermissions os.FileMode
+
+	// keyFileOwnerUID specifies the owner UID to set on the created files
+	keyFileOwnerUID int
+
+	// keyFileOwnerGID specifies the owner GID to set on the created files
+	keyFileOwnerGID int
 
 	// keyHandlers handles non-standard keys with additional requirements
 	// such as requiring a remote unwrapping service, or talking to a HSM, etc.
@@ -92,6 +111,9 @@ func NewKeySyncServer(ksc KeySyncServerConfig) *KeySyncServer {
 		keyHandlers:         map[string]sechandlers.SecretKeyHandler{},
 		addKeyHandlers:      map[string]sechandlers.SecretKeyHandler{},
 		addKeyHandlersMutex: &sync.Mutex{},
+		keyFilePermissions:  ksc.KeyFilePermissions,
+		keyFileOwnerUID:     ksc.KeyFileOwnerUID,
+		keyFileOwnerGID:     ksc.KeyFileOwnerGID,
 	}
 
 	// add the regular key type to the list of special key handlers
@@ -206,9 +228,30 @@ func (ks *KeySyncServer) syncSecretsToLocalKeys(secList *corev1.SecretList, skh 
 			path := filepath.Join(ks.keySyncDir, filename)
 			if !fileExists(path) {
 				logrus.Printf("Syncing new key: %v", filename)
-				err := ioutil.WriteFile(path, data, 0600)
+				err := ioutil.WriteFile(path, data, ks.keyFilePermissions)
 				if err != nil {
-					logrus.Errorf("Unable to write file %s", path)
+					logrus.Errorf("Unable to write file %s: %v", path, err)
+					continue
+				}
+			}
+
+			// Permission and ownership corrigation if needed
+			fileInfo, err := os.Stat(path)
+			if err != nil {
+				logrus.Errorf("Unable to get file %s: %v", path, err)
+			}
+			if fileInfo.Mode() != ks.keyFilePermissions {
+				err = os.Chmod(path, ks.keyFilePermissions)
+				if err != nil {
+					logrus.Errorf("Unable to change file permissions %s: %v", path, err)
+					continue
+				}
+			}
+			if ((ks.keyFileOwnerUID != -1) && (fileInfo.Sys().(*syscall.Stat_t).Uid != uint32(ks.keyFileOwnerUID))) ||
+				((ks.keyFileOwnerGID != -1) && (fileInfo.Sys().(*syscall.Stat_t).Gid != uint32(ks.keyFileOwnerGID))) {
+				err = os.Chown(path, ks.keyFileOwnerUID, ks.keyFileOwnerGID)
+				if err != nil {
+					logrus.Errorf("Unable to change file ownership %s: %v", path, err)
 					continue
 				}
 			}

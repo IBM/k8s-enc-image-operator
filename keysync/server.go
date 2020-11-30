@@ -226,29 +226,13 @@ func (ks *KeySyncServer) syncSecretsToLocalKeys(secList *corev1.SecretList, skh 
 
 			// Write file to directory if file doesn't already exist
 			path := filepath.Join(ks.keySyncDir, filename)
+
 			if !fileExists(path) {
 				logrus.Printf("Syncing new key: %v", filename)
-				err := ioutil.WriteFile(path, data, ks.keyFilePermissions)
+				err := ks.writeKeyFile(path, data)
 				if err != nil {
 					logrus.Errorf("Unable to write file %s: %v", path, err)
 					continue
-				}
-
-				// Permission corrigation might be needed as WriteFile does not
-				// guarantee the specified permissions due to umask
-				err = filePermissionCorrigation(path, ks.keyFilePermissions)
-				if err != nil {
-					logrus.Errorf("Unable to change file permissions %s: %v", path, err)
-					continue
-				}
-
-				// Owner corrigation when a specific uid and/or gid is configured
-				if ks.keyFileOwnerUID != -1 || ks.keyFileOwnerGID != -1 {
-					err = fileOwnershipCorrigation(path, ks.keyFileOwnerUID, ks.keyFileOwnerGID)
-					if err != nil {
-						logrus.Errorf("Unable to change file ownership %s: %v", path, err)
-						continue
-					}
 				}
 			}
 		}
@@ -278,6 +262,44 @@ func (ks *KeySyncServer) cleanupKeys(filenameMap map[string]bool) {
 	}
 }
 
+// writeKeyFile writes key into the specified file
+// and makes sure that the file has the specified
+// permissions and ownership
+func (ks *KeySyncServer) writeKeyFile(filepath string, data []byte) error {
+	// Writing data into the specified file
+	err := ioutil.WriteFile(filepath, data, ks.keyFilePermissions)
+	if err != nil {
+		return err
+	}
+
+	// Getting information about the written file
+	fileInfo, err := os.Stat(filepath)
+	if err != nil {
+		return err
+	}
+
+	// Permission configuration might be needed as WriteFile does not
+	// guarantee the specified permissions due to umask
+	if fileInfo.Mode() != ks.keyFilePermissions {
+		err = os.Chmod(filepath, ks.keyFilePermissions)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Owner configuration when a specific uid and/or gid is configured
+	// in order for this to work CAP_CHOWN is needed
+	if ((ks.keyFileOwnerUID != -1) && (fileInfo.Sys().(*syscall.Stat_t).Uid != uint32(ks.keyFileOwnerUID))) ||
+		((ks.keyFileOwnerGID != -1) && (fileInfo.Sys().(*syscall.Stat_t).Gid != uint32(ks.keyFileOwnerGID))) {
+		err = os.Chown(filepath, ks.keyFileOwnerUID, ks.keyFileOwnerGID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // getLocalKeyFilename returns the local filename to use, format is
 // <md5>-namespace-secretName-filename
 // i.e. a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447-default-mysecret-a.pem
@@ -291,42 +313,4 @@ func getLocalKeyFilename(namespace, name, filename, hashString string) string {
 func fileExists(filepath string) bool {
 	_, err := os.Stat(filepath)
 	return err == nil
-}
-
-// filePermissionCorrigation checks if the specified file
-// has the specified permissions and corrects it if needed
-func filePermissionCorrigation(filepath string, permissions os.FileMode) error {
-	fileInfo, err := os.Stat(filepath)
-	if err != nil {
-		logrus.Errorf("Unable to get file %s: %v", filepath, err)
-		return err
-	}
-	if fileInfo.Mode() != permissions {
-		err = os.Chmod(filepath, permissions)
-		if err != nil {
-			logrus.Errorf("Unable to change file permissions %s: %v", filepath, err)
-			return err
-		}
-	}
-	return nil
-}
-
-// fileOwnershipCorrigation checks if the specified file
-// has the specified uid:gid as owner and correct it if needed
-// in order for this to work CAP_CHOWN is needed
-func fileOwnershipCorrigation(filepath string, uid, gid int) error {
-	fileInfo, err := os.Stat(filepath)
-	if err != nil {
-		logrus.Errorf("Unable to get file %s: %v", filepath, err)
-		return err
-	}
-	if fileInfo.Sys().(*syscall.Stat_t).Uid != uint32(uid) ||
-		fileInfo.Sys().(*syscall.Stat_t).Gid != uint32(gid) {
-		err = os.Chown(filepath, uid, gid)
-		if err != nil {
-			logrus.Errorf("Unable to change file ownership %s: %v", filepath, err)
-			return err
-		}
-	}
-	return nil
 }

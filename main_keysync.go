@@ -16,9 +16,8 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -68,7 +67,7 @@ func main() {
 	flag.StringVar(&inputFlags.keyFilePermissions, "keyFilePermissions", inputFlags.keyFilePermissions,
 		"(optional) permissions for the created key files (defaults to 0600)")
 	flag.StringVar(&inputFlags.keyFileOwnership, "keyFileOwnership", inputFlags.keyFileOwnership,
-		"(optional) ownership for the created key files (in uid:gid format)")
+		"(optional) ownership for the created key files (in UID:GID format; defaults to UID:GID of the process)")
 	flag.Parse()
 
 	config, err := clientcmd.BuildConfigFromFlags("", inputFlags.kubeconfig)
@@ -80,24 +79,16 @@ func main() {
 		panic(err)
 	}
 
-	keyFilePermissions, err := strconv.ParseUint(inputFlags.keyFilePermissions, 8, 32)
-	if err != nil {
-		panic(err)
+	var keyFilePermissions uint32
+	n, err := fmt.Sscanf(inputFlags.keyFilePermissions, "%o", &keyFilePermissions)
+	if err != nil || n != 1 {
+		panic("invalid permissions specified")
 	}
 
 	var keyFileOwnerUID, keyFileOwnerGID int
-	ownership := strings.Split(inputFlags.keyFileOwnership, ":")
-	if len(ownership) != 2 {
-		panic("invalid keyFileOwnership format")
-	} else {
-		keyFileOwnerUID, err = strconv.Atoi(ownership[0])
-		if err != nil {
-			panic(err)
-		}
-		keyFileOwnerGID, err = strconv.Atoi(ownership[1])
-		if err != nil {
-			panic(err)
-		}
+	n, err = fmt.Sscanf(inputFlags.keyFileOwnership, "%d:%d", &keyFileOwnerUID, &keyFileOwnerGID)
+	if err != nil || n != 2 {
+		panic("invalid ownership specified")
 	}
 
 	namespace := os.Getenv(NamespaceEnv)
@@ -146,8 +137,10 @@ func main() {
 		ksc.Interval/time.Second,
 		ksc.Namespace)
 
-	logrus.Printf("Private key files will be persisted with %v permissions and %d:%d ownership",
-		ksc.KeyFilePermissions,
+	logrus.Printf("Private key files will be persisted with %v permissions",
+		ksc.KeyFilePermissions)
+
+	logrus.Printf("Private key files will be persisted with %d:%d ownership (this might not work unless running as root or having CAP_CHOWN)",
 		ksc.KeyFileOwnerUID,
 		ksc.KeyFileOwnerGID)
 

@@ -233,26 +233,22 @@ func (ks *KeySyncServer) syncSecretsToLocalKeys(secList *corev1.SecretList, skh 
 					logrus.Errorf("Unable to write file %s: %v", path, err)
 					continue
 				}
-			}
 
-			// Permission and ownership corrigation if needed
-			fileInfo, err := os.Stat(path)
-			if err != nil {
-				logrus.Errorf("Unable to get file %s: %v", path, err)
-			}
-			if fileInfo.Mode() != ks.keyFilePermissions {
-				err = os.Chmod(path, ks.keyFilePermissions)
+				// Permission corrigation might be needed as WriteFile does not
+				// guarantee the specified permissions due to umask
+				err = filePermissionCorrigation(path, ks.keyFilePermissions)
 				if err != nil {
 					logrus.Errorf("Unable to change file permissions %s: %v", path, err)
 					continue
 				}
-			}
-			if ((ks.keyFileOwnerUID != -1) && (fileInfo.Sys().(*syscall.Stat_t).Uid != uint32(ks.keyFileOwnerUID))) ||
-				((ks.keyFileOwnerGID != -1) && (fileInfo.Sys().(*syscall.Stat_t).Gid != uint32(ks.keyFileOwnerGID))) {
-				err = os.Chown(path, ks.keyFileOwnerUID, ks.keyFileOwnerGID)
-				if err != nil {
-					logrus.Errorf("Unable to change file ownership %s: %v", path, err)
-					continue
+
+				// Owner corrigation when a specific uid and/or gid is configured
+				if ks.keyFileOwnerUID != -1 || ks.keyFileOwnerGID != -1 {
+					err = fileOwnershipCorrigation(path, ks.keyFileOwnerUID, ks.keyFileOwnerGID)
+					if err != nil {
+						logrus.Errorf("Unable to change file ownership %s: %v", path, err)
+						continue
+					}
 				}
 			}
 		}
@@ -295,4 +291,42 @@ func getLocalKeyFilename(namespace, name, filename, hashString string) string {
 func fileExists(filepath string) bool {
 	_, err := os.Stat(filepath)
 	return err == nil
+}
+
+// filePermissionCorrigation checks if the specified file
+// has the specified permissions and corrects it if needed
+func filePermissionCorrigation(filepath string, permissions os.FileMode) error {
+	fileInfo, err := os.Stat(filepath)
+	if err != nil {
+		logrus.Errorf("Unable to get file %s: %v", filepath, err)
+		return err
+	}
+	if fileInfo.Mode() != permissions {
+		err = os.Chmod(filepath, permissions)
+		if err != nil {
+			logrus.Errorf("Unable to change file permissions %s: %v", filepath, err)
+			return err
+		}
+	}
+	return nil
+}
+
+// fileOwnershipCorrigation checks if the specified file
+// has the specified uid:gid as owner and correct it if needed
+// in order for this to work CAP_CHOWN is needed
+func fileOwnershipCorrigation(filepath string, uid, gid int) error {
+	fileInfo, err := os.Stat(filepath)
+	if err != nil {
+		logrus.Errorf("Unable to get file %s: %v", filepath, err)
+		return err
+	}
+	if fileInfo.Sys().(*syscall.Stat_t).Uid != uint32(uid) ||
+		fileInfo.Sys().(*syscall.Stat_t).Gid != uint32(gid) {
+		err = os.Chown(filepath, uid, gid)
+		if err != nil {
+			logrus.Errorf("Unable to change file ownership %s: %v", filepath, err)
+			return err
+		}
+	}
+	return nil
 }

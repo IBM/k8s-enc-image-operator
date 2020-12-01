@@ -30,7 +30,7 @@ spec:
         args:
         - -dir
         - /keys
-        - -keyprotectConfig
+        - -keyprotectConfigFile
         - /kpconfig/config.json
         env:
         - name: POD_NAMESPACE

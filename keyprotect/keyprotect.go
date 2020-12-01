@@ -35,16 +35,22 @@ type keyprotectConfig struct {
 	Apikey        string `json:"apikey"`
 }
 
-// GetSecKeyHandlerFromConfig returns a secrethandler for key protect given a configuration
+// GetSecKeyHandlerFromConfigFile returns a secrethandler for key protect given a configuration
 // file for key protect
-func GetSecKeyHandlerFromConfig(kpconfigPath string) (sechandlers.SecretKeyHandler, error) {
+func GetSecKeyHandlerFromConfigFile(kpconfigPath string) (sechandlers.SecretKeyHandler, error) {
 	data, err := ioutil.ReadFile(filepath.Clean(kpconfigPath))
 	if err != nil {
 		return nil, err
 	}
 
+	return GetSecKeyHandlerFromConfig(data)
+}
+
+// GetSecKeyHandlerFromConfig returns a secrethandler for key protect given a configuration
+// data for key protect
+func GetSecKeyHandlerFromConfig(data []byte) (sechandlers.SecretKeyHandler, error) {
 	var kpc keyprotectConfig
-	err = json.Unmarshal(data, &kpc)
+	err := json.Unmarshal(data, &kpc)
 	if err != nil {
 		return nil, err
 	}

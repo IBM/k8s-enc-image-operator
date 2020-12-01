@@ -47,10 +47,13 @@ func TestKeySync(t *testing.T) {
 	)
 
 	ksc := KeySyncServerConfig{
-		K8sClient:  fakeClient,
-		Interval:   interval,
-		KeySyncDir: tmpDir,
-		Namespace:  namespace,
+		K8sClient:          fakeClient,
+		Interval:           interval,
+		KeySyncDir:         tmpDir,
+		Namespace:          namespace,
+		KeyFilePermissions: os.FileMode(0600),
+		KeyFileOwnerUID:    -1,
+		KeyFileOwnerGID:    -1,
 	}
 	kss := NewKeySyncServer(ksc)
 
@@ -177,10 +180,13 @@ func TestKeySyncAddHandlersBeforeStart(t *testing.T) {
 	}
 
 	ksc := KeySyncServerConfig{
-		K8sClient:  fakeClient,
-		Interval:   interval,
-		KeySyncDir: tmpDir,
-		Namespace:  namespace,
+		K8sClient:          fakeClient,
+		Interval:           interval,
+		KeySyncDir:         tmpDir,
+		Namespace:          namespace,
+		KeyFilePermissions: os.FileMode(0600),
+		KeyFileOwnerUID:    -1,
+		KeyFileOwnerGID:    -1,
 	}
 
 	kss := NewKeySyncServer(ksc)
@@ -311,10 +317,13 @@ func TestKeySyncAddHandlersAfterStart(t *testing.T) {
 	}
 
 	ksc := KeySyncServerConfig{
-		K8sClient:  fakeClient,
-		Interval:   interval,
-		KeySyncDir: tmpDir,
-		Namespace:  namespace,
+		K8sClient:          fakeClient,
+		Interval:           interval,
+		KeySyncDir:         tmpDir,
+		Namespace:          namespace,
+		KeyFilePermissions: os.FileMode(0600),
+		KeyFileOwnerUID:    -1,
+		KeyFileOwnerGID:    -1,
 	}
 
 	kss := NewKeySyncServer(ksc)

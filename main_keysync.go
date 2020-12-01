@@ -16,6 +16,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"time"
 
@@ -41,12 +42,16 @@ func main() {
 		dir                        string
 		keyprotectConfigFile       string
 		keyprotectConfigKubeSecret string
+		keyFilePermissions         string
+		keyFileOwnership           string
 	}{
 		kubeconfig:                 "",
 		interval:                   10,
 		dir:                        "/tmp/keys",
 		keyprotectConfigFile:       "",
 		keyprotectConfigKubeSecret: "",
+		keyFilePermissions:         "0600",
+		keyFileOwnership:           "-1:-1",
 	}
 
 	flag.StringVar(&inputFlags.kubeconfig, "kubeconfig", inputFlags.kubeconfig,
@@ -59,6 +64,10 @@ func main() {
 		"(optional) config file for keyprotect enablement")
 	flag.StringVar(&inputFlags.keyprotectConfigKubeSecret, "keyprotectConfigKubeSecret", inputFlags.keyprotectConfigKubeSecret,
 		"(optional) kube secret name for config file for keyprotect enablement")
+	flag.StringVar(&inputFlags.keyFilePermissions, "keyFilePermissions", inputFlags.keyFilePermissions,
+		"(optional) permissions for the created key files (defaults to 0600)")
+	flag.StringVar(&inputFlags.keyFileOwnership, "keyFileOwnership", inputFlags.keyFileOwnership,
+		"(optional) ownership for the created key files (in UID:GID format; defaults to UID:GID of the process)")
 	flag.Parse()
 
 	config, err := clientcmd.BuildConfigFromFlags("", inputFlags.kubeconfig)
@@ -70,14 +79,29 @@ func main() {
 		panic(err)
 	}
 
+	var keyFilePermissions uint32
+	n, err := fmt.Sscanf(inputFlags.keyFilePermissions, "%o", &keyFilePermissions)
+	if err != nil || n != 1 {
+		panic("invalid permissions specified")
+	}
+
+	var keyFileOwnerUID, keyFileOwnerGID int
+	n, err = fmt.Sscanf(inputFlags.keyFileOwnership, "%d:%d", &keyFileOwnerUID, &keyFileOwnerGID)
+	if err != nil || n != 2 {
+		panic("invalid ownership specified")
+	}
+
 	namespace := os.Getenv(NamespaceEnv)
 	interval := time.Duration(inputFlags.interval) * time.Second
 
 	ksc := keysync.KeySyncServerConfig{
-		K8sClient:  clientset,
-		Interval:   interval,
-		KeySyncDir: inputFlags.dir,
-		Namespace:  namespace,
+		K8sClient:          clientset,
+		Interval:           interval,
+		KeySyncDir:         inputFlags.dir,
+		Namespace:          namespace,
+		KeyFilePermissions: os.FileMode(keyFilePermissions),
+		KeyFileOwnerUID:    keyFileOwnerUID,
+		KeyFileOwnerGID:    keyFileOwnerGID,
 	}
 	ks := keysync.NewKeySyncServer(ksc)
 
@@ -112,6 +136,13 @@ func main() {
 		ksc.KeySyncDir,
 		ksc.Interval/time.Second,
 		ksc.Namespace)
+
+	logrus.Printf("Private key files will be persisted with %v permissions",
+		ksc.KeyFilePermissions)
+
+	logrus.Printf("Private key files will be persisted with %d:%d ownership (this might not work unless running as root or having CAP_CHOWN)",
+		ksc.KeyFileOwnerUID,
+		ksc.KeyFileOwnerGID)
 
 	if err := ks.Start(); err != nil {
 		logrus.Fatalf("KeySync failure: %v", err)

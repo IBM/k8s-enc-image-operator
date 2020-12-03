@@ -1,1 +1,0 @@
-For non-openshift manifest, manifest alm-example  default YAML should set isOpenShift: false

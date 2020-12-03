@@ -51,7 +51,7 @@ func main() {
 		keyprotectConfigFile:       "",
 		keyprotectConfigKubeSecret: "",
 		keyFilePermissions:         "0600",
-		keyFileOwnership:           "-1:-1",
+		keyFileOwnership:           "",
 	}
 
 	flag.StringVar(&inputFlags.kubeconfig, "kubeconfig", inputFlags.kubeconfig,
@@ -67,7 +67,7 @@ func main() {
 	flag.StringVar(&inputFlags.keyFilePermissions, "keyFilePermissions", inputFlags.keyFilePermissions,
 		"(optional) permissions for the created key files (defaults to 0600)")
 	flag.StringVar(&inputFlags.keyFileOwnership, "keyFileOwnership", inputFlags.keyFileOwnership,
-		"(optional) ownership for the created key files (in UID:GID format; defaults to UID:GID of the process)")
+		"(optional) ownership for the created key files (in UID:GID format; if not provided key files will be created with UID:GID of the process)")
 	flag.Parse()
 
 	config, err := clientcmd.BuildConfigFromFlags("", inputFlags.kubeconfig)
@@ -85,10 +85,12 @@ func main() {
 		panic("invalid permissions specified")
 	}
 
-	var keyFileOwnerUID, keyFileOwnerGID int
-	n, err = fmt.Sscanf(inputFlags.keyFileOwnership, "%d:%d", &keyFileOwnerUID, &keyFileOwnerGID)
-	if err != nil || n != 2 {
-		panic("invalid ownership specified")
+	var keyFileOwnerUID, keyFileOwnerGID *int
+	if inputFlags.keyFileOwnership != "" {
+		n, err = fmt.Sscanf(inputFlags.keyFileOwnership, "%d:%d", keyFileOwnerUID, keyFileOwnerGID)
+		if err != nil || n != 2 || *keyFileOwnerUID < 0 || *keyFileOwnerGID < 0 {
+			panic("invalid ownership specified")
+		}
 	}
 
 	namespace := os.Getenv(NamespaceEnv)
@@ -140,9 +142,11 @@ func main() {
 	logrus.Printf("Private key files will be persisted with %v permissions",
 		ksc.KeyFilePermissions)
 
-	logrus.Printf("Private key files will be persisted with %d:%d ownership (this might not work unless running as root or having CAP_CHOWN)",
-		ksc.KeyFileOwnerUID,
-		ksc.KeyFileOwnerGID)
+	if ksc.KeyFileOwnerUID != nil && ksc.KeyFileOwnerGID != nil {
+		logrus.Printf("Private key files will be persisted with %d:%d ownership (this might not work unless running as root or having CAP_CHOWN)",
+			ksc.KeyFileOwnerUID,
+			ksc.KeyFileOwnerGID)
+	}
 
 	if err := ks.Start(); err != nil {
 		logrus.Fatalf("KeySync failure: %v", err)

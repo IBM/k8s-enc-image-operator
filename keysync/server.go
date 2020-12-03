@@ -56,10 +56,12 @@ type KeySyncServerConfig struct {
 	KeyFilePermissions os.FileMode
 
 	// KeyFileOwnerUID specifies the owner UID to set on the created files
-	KeyFileOwnerUID int
+	// if nil, owner UID won't be changed, therefore files will be created with process UID
+	KeyFileOwnerUID *int
 
 	// KeyFileOwnerGID specifies the owner GID to set on the created files
-	KeyFileOwnerGID int
+	// if nil, owner GID won't be changed, therefore files will be created with process GID
+	KeyFileOwnerGID *int
 }
 
 // KeySyncServer represents the server to perform key syncing
@@ -81,10 +83,12 @@ type KeySyncServer struct {
 	keyFilePermissions os.FileMode
 
 	// keyFileOwnerUID specifies the owner UID to set on the created files
-	keyFileOwnerUID int
+	// if nil, owner UID won't be changed, therefore files will be created with process UID
+	keyFileOwnerUID *int
 
 	// keyFileOwnerGID specifies the owner GID to set on the created files
-	keyFileOwnerGID int
+	// if nil, owner GID won't be changed, therefore files will be created with process GID
+	keyFileOwnerGID *int
 
 	// keyHandlers handles non-standard keys with additional requirements
 	// such as requiring a remote unwrapping service, or talking to a HSM, etc.
@@ -287,11 +291,11 @@ func (ks *KeySyncServer) writeKeyFile(filepath string, data []byte) error {
 		}
 	}
 
-	// Owner configuration when a specific uid and/or gid is configured
+	// Owner configuration when a specific uid:gid is configured
 	// in order for this to work CAP_CHOWN is needed
-	if ((ks.keyFileOwnerUID != -1) && (fileInfo.Sys().(*syscall.Stat_t).Uid != uint32(ks.keyFileOwnerUID))) ||
-		((ks.keyFileOwnerGID != -1) && (fileInfo.Sys().(*syscall.Stat_t).Gid != uint32(ks.keyFileOwnerGID))) {
-		err = os.Chown(filepath, ks.keyFileOwnerUID, ks.keyFileOwnerGID)
+	if ((ks.keyFileOwnerUID != nil) && (fileInfo.Sys().(*syscall.Stat_t).Uid != uint32(*ks.keyFileOwnerUID))) ||
+		((ks.keyFileOwnerGID != nil) && (fileInfo.Sys().(*syscall.Stat_t).Gid != uint32(*ks.keyFileOwnerGID))) {
+		err = os.Chown(filepath, *ks.keyFileOwnerUID, *ks.keyFileOwnerGID)
 		if err != nil {
 			return err
 		}

@@ -2,13 +2,13 @@ name: Go
 
 on:
   push:
-    branches: [ $default-branch ]
+    branches: [ master ]
   pull_request:
-    branches: [ $default-branch ]
+    branches: [ master ]
 
 jobs:
 
-  Test:
+  test:
     env:
       GOLANGCI_LINT_VERSION: v1.32.2
       GOSEC_VERSION: v2.5.0

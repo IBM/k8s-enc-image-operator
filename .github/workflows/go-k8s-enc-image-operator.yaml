@@ -13,14 +13,18 @@ jobs:
       GOLANGCI_LINT_VERSION: v1.32.2
       GOSEC_VERSION: v2.5.0
 
-    name: CI Checks
-    runs-on: self-hosted,go
+
+    name: Test
+    runs-on: [self-hosted,go]
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
 
     - name: Install dependancies
-      run: apt-get update && apt-get upgrade -y && apt-get install -y libseccomp-dev gnutils-bin
+      run: |
+        apt-get update
+        apt-get upgrade -y
+        apt-get install -y libseccomp-dev gnutls-bin
 
     - name: Install golangci lint
       run: curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin ${GOLANGCI_LINT_VERSION}
@@ -29,4 +33,6 @@ jobs:
       run: curl -sfL https://raw.githubusercontent.com/securego/gosec/master/install.sh | sh -s -- -b $(go env GOPATH)/bin ${GOSEC_VERSION}
 
     - name: Test
-      run: make check
+      run: |
+        export PATH=$PATH:/usr/local/go/bin/
+        make check

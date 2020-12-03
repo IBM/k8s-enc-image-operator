@@ -13,7 +13,7 @@ jobs:
       GOLANGCI_LINT_VERSION: v1.32.2
       GOSEC_VERSION: v2.5.0
 
-    name: Test
+    name: CI Checks
     runs-on: self-hosted,go
     steps:
     - name: Check out code into the Go module directory

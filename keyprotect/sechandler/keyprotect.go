@@ -26,12 +26,14 @@ type keyprotectSecretKeyHandler struct {
 	kpClient *kp.Client
 }
 
-// handleSecret unwraps the keys by calling the key protect unwrap service
+// handleSecret unwraps the keys by calling the key protect unwrap service, returning a
+// map of key filenames to data to store. It returns a single key filename -> data map
+// in the keyprotect implementation to meet the sechandlers.SecretKeyHandler func definition
 func (skh *keyprotectSecretKeyHandler) handleSecret(data map[string][]byte) (map[string][]byte, error) {
 	var err error
 	retdata := map[string][]byte{}
 
-	keyid, ok := data["keyid"]
+	keyid, ok := data["rootkeyid"]
 	if !ok {
 		return nil, errors.New("keyid not in secret")
 	}

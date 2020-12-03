@@ -33,5 +33,5 @@ jobs:
 
     - name: Test
       run: |
-        export PATH=$PATH:/usr/local/go/ 
+        export PATH=$PATH:/usr/local/go/bin/
         make check

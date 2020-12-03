@@ -128,7 +128,7 @@ The response will be in the following format, we will store this into the file `
 
 ## Putting the wrapped key into cluster
 
-We can then create a secret with this wrapped key with the secret type `type=kp-key` for keyprotect key, using the `ciphertext` field and `keyVersion.id` field above:
+We can then create a secret with this wrapped key with the secret type `type=kp-key` for keyprotect key, using the `ciphertext` field and `rootkeyid` field above:
 
 ```
 $ cat > my-wrapped-key.yaml  <<EOF

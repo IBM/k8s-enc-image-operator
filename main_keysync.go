@@ -110,8 +110,10 @@ func main() {
 	if inputFlags.keyprotectConfigFile != "" {
 		kpskh, err := keyprotect.GetSecKeyHandlerFromConfigFile(inputFlags.keyprotectConfigFile)
 		if err != nil {
-			panic(err)
+			panic(wewerr)
+
 		}
+
 		ks.AddSecretKeyHandler("kp-key", kpskh)
 	} else if inputFlags.keyprotectConfigKubeSecret != "" {
 		go keyprotectConfigKubeSecretThread(clientset, namespace, inputFlags.keyprotectConfigKubeSecret, ks, interval)

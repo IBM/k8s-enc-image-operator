@@ -87,6 +87,7 @@ func main() {
 
 	var keyFileOwnerUID, keyFileOwnerGID *int
 	if inputFlags.keyFileOwnership != "" {
+		keyFileOwnerUID, keyFileOwnerGID = new(int), new(int)
 		n, err = fmt.Sscanf(inputFlags.keyFileOwnership, "%d:%d", keyFileOwnerUID, keyFileOwnerGID)
 		if err != nil || n != 2 || *keyFileOwnerUID < 0 || *keyFileOwnerGID < 0 {
 			panic("invalid ownership specified")
@@ -144,8 +145,8 @@ func main() {
 
 	if ksc.KeyFileOwnerUID != nil && ksc.KeyFileOwnerGID != nil {
 		logrus.Printf("Private key files will be persisted with %d:%d ownership (this might not work unless running as root or having CAP_CHOWN)",
-			ksc.KeyFileOwnerUID,
-			ksc.KeyFileOwnerGID)
+			*ksc.KeyFileOwnerUID,
+			*ksc.KeyFileOwnerGID)
 	}
 
 	if err := ks.Start(); err != nil {

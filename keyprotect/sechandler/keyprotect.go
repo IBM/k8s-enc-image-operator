@@ -35,7 +35,7 @@ func (skh *keyprotectSecretKeyHandler) handleSecret(data map[string][]byte) (map
 
 	keyid, ok := data["rootkeyid"]
 	if !ok {
-		return nil, errors.New("keyid not in secret")
+		return nil, errors.New("rootkeyid not in secret")
 	}
 
 	ciphertext, ok := data["ciphertext"]

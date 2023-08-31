@@ -15,7 +15,7 @@
 package keysync
 
 import (
-	"crypto/md5" // #nosec G501
+	"crypto/md5" // #nosec G501 Usage is not related to security
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -219,7 +219,7 @@ func (ks *KeySyncServer) syncSecretsToLocalKeys(secList *corev1.SecretList, skh 
 
 		// For each file in the secret
 		for filename, data := range keyFiles {
-			hashString := fmt.Sprintf("%x", md5.Sum(data)) // #nosec G401
+			hashString := fmt.Sprintf("%x", md5.Sum(data)) // #nosec G401 Needed only to check if file exists
 
 			// Hash contents of each file, and check if they exists
 			// already before writing

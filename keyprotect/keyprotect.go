@@ -16,7 +16,7 @@ package keyprotect
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 
 	kpsh "github.com/lumjjb/k8s-enc-image-operator/keyprotect/sechandler"
@@ -38,7 +38,7 @@ type keyprotectConfig struct {
 // GetSecKeyHandlerFromConfigFile returns a secrethandler for key protect given a configuration
 // file for key protect
 func GetSecKeyHandlerFromConfigFile(kpconfigPath string) (sechandlers.SecretKeyHandler, error) {
-	data, err := ioutil.ReadFile(filepath.Clean(kpconfigPath))
+	data, err := os.ReadFile(filepath.Clean(kpconfigPath))
 	if err != nil {
 		return nil, err
 	}

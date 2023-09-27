@@ -18,7 +18,15 @@ jobs:
     runs-on: [self-hosted,go]
     steps:
     - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        check-latest: true
+
+    - run: go version
 
     - name: Install dependancies
       run: |

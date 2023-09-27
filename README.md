@@ -129,4 +129,4 @@ $ kubectl run enc-workload --image=docker.io/lumjjb/sample-enc-app
 
 # Developing 
 
-We are using golang 1.14.7 or later, expect problems with earlier releases.
+We are using golang 1.19.12 or later, expect problems with earlier releases.

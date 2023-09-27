@@ -15,9 +15,10 @@
 package keysync
 
 import (
+	"context"
 	"crypto/md5" // #nosec G501 Usage is not related to security
 	"fmt"
-	"io/ioutil"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
@@ -148,7 +149,7 @@ func (ks *KeySyncServer) Start() error {
 		allFilenameMap := map[string]bool{}
 
 		for secType, skh := range ks.keyHandlers {
-			secList, err := secClient.List(metav1.ListOptions{
+			secList, err := secClient.List(context.Background(), metav1.ListOptions{
 				FieldSelector: keyTypeFieldSelectorPrefix + secType,
 			})
 			if err != nil {
@@ -246,9 +247,9 @@ func (ks *KeySyncServer) syncSecretsToLocalKeys(secList *corev1.SecretList, skh 
 
 func (ks *KeySyncServer) cleanupKeys(filenameMap map[string]bool) {
 	// Do cleanup of files that are not part of current secrets
-	files, err := ioutil.ReadDir(ks.keySyncDir)
+	files, err := os.ReadDir(ks.keySyncDir)
 	if err != nil {
-		files = []os.FileInfo{}
+		files = []fs.DirEntry{}
 		logrus.Errorf("Unable to list directory for cleanup")
 	}
 
@@ -271,7 +272,7 @@ func (ks *KeySyncServer) cleanupKeys(filenameMap map[string]bool) {
 // permissions and ownership
 func (ks *KeySyncServer) writeKeyFile(filepath string, data []byte) error {
 	// Writing data into the specified file
-	err := ioutil.WriteFile(filepath, data, ks.keyFilePermissions)
+	err := os.WriteFile(filepath, data, ks.keyFilePermissions)
 	if err != nil {
 		return err
 	}

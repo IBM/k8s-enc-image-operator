@@ -15,7 +15,7 @@ fmt:
 	go fmt ./...
 	scripts/copyright-check.sh
 	gosec ./...
-	golangci-lint run
+	golangci-lint run --timeout 10m0s
 
 bin/keysync: keysync/* main_keysync.go
 	go build -o bin/keysync main_keysync.go

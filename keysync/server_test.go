@@ -15,9 +15,9 @@
 package keysync
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,7 +34,7 @@ import (
 // TestKeySync runs through syncing of a key for creation and deletion of a key
 func TestKeySync(t *testing.T) {
 	// Setup
-	tmpDir, err := ioutil.TempDir("", "keysync")
+	tmpDir, err := os.MkdirTemp("", "keysync")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestKeySync(t *testing.T) {
 	go func() { kssErr = kss.Start() }()
 
 	// Ensure no keys at start
-	files, err := ioutil.ReadDir(tmpDir)
+	files, err := os.ReadDir(tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestKeySync(t *testing.T) {
 	}
 
 	fmt.Println("Creating sample key")
-	_, err = fakeClient.CoreV1().Secrets(namespace).Create(secret)
+	_, err = fakeClient.CoreV1().Secrets(namespace).Create(context.Background(), secret, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Unable to create secret: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestKeySync(t *testing.T) {
 	fmt.Println("Sleeping 2x interval")
 	time.Sleep(interval * 2)
 
-	files, err = ioutil.ReadDir(tmpDir)
+	files, err = os.ReadDir(tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestKeySync(t *testing.T) {
 	}
 
 	fmt.Println("Filepath: ", filepath.Join(tmpDir, files[0].Name()))
-	contents, err := ioutil.ReadFile(filepath.Join(tmpDir, files[0].Name()))
+	contents, err := os.ReadFile(filepath.Join(tmpDir, files[0].Name()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestKeySync(t *testing.T) {
 	}
 
 	// Delete secret and check if it is removed
-	err = fakeClient.CoreV1().Secrets(namespace).Delete(secret.ObjectMeta.Name, &metav1.DeleteOptions{})
+	err = fakeClient.CoreV1().Secrets(namespace).Delete(context.Background(), secret.ObjectMeta.Name, metav1.DeleteOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestKeySync(t *testing.T) {
 	fmt.Println("Sleeping 2x interval")
 	time.Sleep(interval * 2)
 
-	files, err = ioutil.ReadDir(tmpDir)
+	files, err = os.ReadDir(tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestKeySync(t *testing.T) {
 // with special secret handlers before server start
 func TestKeySyncAddHandlersBeforeStart(t *testing.T) {
 	// Setup
-	tmpDir, err := ioutil.TempDir("", "keysync")
+	tmpDir, err := os.MkdirTemp("", "keysync")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestKeySyncAddHandlersBeforeStart(t *testing.T) {
 	go func() { kssErr = kss.Start() }()
 
 	// Ensure no keys at start
-	files, err := ioutil.ReadDir(tmpDir)
+	files, err := os.ReadDir(tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestKeySyncAddHandlersBeforeStart(t *testing.T) {
 	}
 
 	fmt.Println("Creating sample key")
-	_, err = fakeClient.CoreV1().Secrets(namespace).Create(secret)
+	_, err = fakeClient.CoreV1().Secrets(namespace).Create(context.Background(), secret, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Unable to create secret: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestKeySyncAddHandlersBeforeStart(t *testing.T) {
 	fmt.Println("Sleeping 2x interval")
 	time.Sleep(interval * 2)
 
-	files, err = ioutil.ReadDir(tmpDir)
+	files, err = os.ReadDir(tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestKeySyncAddHandlersBeforeStart(t *testing.T) {
 	}
 
 	fmt.Println("Filepath: ", filepath.Join(tmpDir, files[0].Name()))
-	contents, err := ioutil.ReadFile(filepath.Join(tmpDir, files[0].Name()))
+	contents, err := os.ReadFile(filepath.Join(tmpDir, files[0].Name()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +247,7 @@ func TestKeySyncAddHandlersBeforeStart(t *testing.T) {
 	}
 
 	// Delete secret and check if it is removed
-	err = fakeClient.CoreV1().Secrets(namespace).Delete(secret.ObjectMeta.Name, &metav1.DeleteOptions{})
+	err = fakeClient.CoreV1().Secrets(namespace).Delete(context.Background(), secret.ObjectMeta.Name, metav1.DeleteOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestKeySyncAddHandlersBeforeStart(t *testing.T) {
 	fmt.Println("Sleeping 2x interval")
 	time.Sleep(interval * 2)
 
-	files, err = ioutil.ReadDir(tmpDir)
+	files, err = os.ReadDir(tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestKeySyncAddHandlersBeforeStart(t *testing.T) {
 // with special secret handlers after server start
 func TestKeySyncAddHandlersAfterStart(t *testing.T) {
 	// Setup
-	tmpDir, err := ioutil.TempDir("", "keysync")
+	tmpDir, err := os.MkdirTemp("", "keysync")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +331,7 @@ func TestKeySyncAddHandlersAfterStart(t *testing.T) {
 	go func() { kssErr = kss.Start() }()
 
 	// Ensure no keys at start
-	files, err := ioutil.ReadDir(tmpDir)
+	files, err := os.ReadDir(tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +352,7 @@ func TestKeySyncAddHandlersAfterStart(t *testing.T) {
 	}
 
 	fmt.Println("Creating sample key")
-	_, err = fakeClient.CoreV1().Secrets(namespace).Create(secret)
+	_, err = fakeClient.CoreV1().Secrets(namespace).Create(context.Background(), secret, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Unable to create secret: %v", err)
 	}
@@ -360,7 +360,7 @@ func TestKeySyncAddHandlersAfterStart(t *testing.T) {
 	fmt.Println("Sleeping 2x interval")
 	time.Sleep(interval * 2)
 
-	files, err = ioutil.ReadDir(tmpDir)
+	files, err = os.ReadDir(tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,7 +376,7 @@ func TestKeySyncAddHandlersAfterStart(t *testing.T) {
 	fmt.Println("Sleeping 2x interval")
 	time.Sleep(interval * 2)
 
-	files, err = ioutil.ReadDir(tmpDir)
+	files, err = os.ReadDir(tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -386,7 +386,7 @@ func TestKeySyncAddHandlersAfterStart(t *testing.T) {
 	}
 
 	fmt.Println("Filepath: ", filepath.Join(tmpDir, files[0].Name()))
-	contents, err := ioutil.ReadFile(filepath.Join(tmpDir, files[0].Name()))
+	contents, err := os.ReadFile(filepath.Join(tmpDir, files[0].Name()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +396,7 @@ func TestKeySyncAddHandlersAfterStart(t *testing.T) {
 	}
 
 	// Delete secret and check if it is removed
-	err = fakeClient.CoreV1().Secrets(namespace).Delete(secret.ObjectMeta.Name, &metav1.DeleteOptions{})
+	err = fakeClient.CoreV1().Secrets(namespace).Delete(context.Background(), secret.ObjectMeta.Name, metav1.DeleteOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +404,7 @@ func TestKeySyncAddHandlersAfterStart(t *testing.T) {
 	fmt.Println("Sleeping 2x interval")
 	time.Sleep(interval * 2)
 
-	files, err = ioutil.ReadDir(tmpDir)
+	files, err = os.ReadDir(tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}

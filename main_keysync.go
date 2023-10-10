@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -167,7 +168,7 @@ func keyprotectConfigKubeSecretThread(clientset clientset.Interface, namespace s
 		}
 
 		secClient := clientset.CoreV1().Secrets(namespace)
-		s, err := secClient.Get(secretName, metav1.GetOptions{})
+		s, err := secClient.Get(context.Background(), secretName, metav1.GetOptions{})
 		if err != nil {
 			continue
 		}

@@ -294,6 +294,7 @@ func (ks *KeySyncServer) writeKeyFile(filepath string, data []byte) error {
 
 	// Owner configuration when a specific uid:gid is configured
 	// in order for this to work CAP_CHOWN is needed
+	// #nosec G115 userid and groupid should not be bigger then uint32
 	if ((ks.keyFileOwnerUID != nil) && (fileInfo.Sys().(*syscall.Stat_t).Uid != uint32(*ks.keyFileOwnerUID))) ||
 		((ks.keyFileOwnerGID != nil) && (fileInfo.Sys().(*syscall.Stat_t).Gid != uint32(*ks.keyFileOwnerGID))) {
 		err = os.Chown(filepath, *ks.keyFileOwnerUID, *ks.keyFileOwnerGID)

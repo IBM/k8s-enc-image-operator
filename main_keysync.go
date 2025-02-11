@@ -18,6 +18,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"time"
 
@@ -96,6 +97,9 @@ func main() {
 	}
 
 	namespace := os.Getenv(NamespaceEnv)
+	if inputFlags.interval > math.MaxInt64 {
+		panic("input interval caused conversion overflow")
+	}
 	interval := time.Duration(inputFlags.interval) * time.Second
 
 	ksc := keysync.KeySyncServerConfig{

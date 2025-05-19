@@ -38,7 +38,12 @@ func TestKeySync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir) // clean up
+	defer func() {
+		err = os.RemoveAll(tmpDir) // clean up
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	var (
 		fakeClient = fake.NewSimpleClientset()
@@ -110,7 +115,7 @@ func TestKeySync(t *testing.T) {
 	}
 
 	// Delete secret and check if it is removed
-	err = fakeClient.CoreV1().Secrets(namespace).Delete(context.Background(), secret.ObjectMeta.Name, metav1.DeleteOptions{})
+	err = fakeClient.CoreV1().Secrets(namespace).Delete(context.Background(), secret.GetName(), metav1.DeleteOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +145,12 @@ func TestKeySyncAddHandlersBeforeStart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir) // clean up
+	defer func() {
+		err = os.RemoveAll(tmpDir) // clean up
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	var (
 		fakeClient = fake.NewSimpleClientset()
@@ -247,7 +257,7 @@ func TestKeySyncAddHandlersBeforeStart(t *testing.T) {
 	}
 
 	// Delete secret and check if it is removed
-	err = fakeClient.CoreV1().Secrets(namespace).Delete(context.Background(), secret.ObjectMeta.Name, metav1.DeleteOptions{})
+	err = fakeClient.CoreV1().Secrets(namespace).Delete(context.Background(), secret.GetName(), metav1.DeleteOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +287,12 @@ func TestKeySyncAddHandlersAfterStart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir) // clean up
+	defer func() {
+		err = os.RemoveAll(tmpDir) // clean up
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	var (
 		fakeClient = fake.NewSimpleClientset()
@@ -396,7 +411,7 @@ func TestKeySyncAddHandlersAfterStart(t *testing.T) {
 	}
 
 	// Delete secret and check if it is removed
-	err = fakeClient.CoreV1().Secrets(namespace).Delete(context.Background(), secret.ObjectMeta.Name, metav1.DeleteOptions{})
+	err = fakeClient.CoreV1().Secrets(namespace).Delete(context.Background(), secret.GetName(), metav1.DeleteOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

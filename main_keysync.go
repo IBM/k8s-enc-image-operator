@@ -22,15 +22,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/sirupsen/logrus"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
-
 	keyprotect "github.com/lumjjb/k8s-enc-image-operator/keyprotect"
 	"github.com/lumjjb/k8s-enc-image-operator/keysync"
-
+	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
@@ -161,7 +158,7 @@ func main() {
 
 // keyprotectConfigKubeSecretThread is a helper function that tries to retrieve the kube secret containing the
 // keyprotect config and add the handler to the key sync server. Meant to run as a thread.
-func keyprotectConfigKubeSecretThread(clientset clientset.Interface, namespace string, secretName string, ks *keysync.KeySyncServer, interval time.Duration) {
+func keyprotectConfigKubeSecretThread(clientset kubernetes.Interface, namespace string, secretName string, ks *keysync.KeySyncServer, interval time.Duration) {
 	first := true
 	oldData := ""
 	for {

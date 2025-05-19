@@ -204,12 +204,12 @@ func (ks *KeySyncServer) syncSecretsToLocalKeys(secList *corev1.SecretList, skh 
 		// This way we can easily check if the file has changed,
 		// and remove the rest that are not in the list of hashes
 
-		namespace := s.ObjectMeta.Namespace
+		namespace := s.GetNamespace()
 		if namespace == "" {
 			namespace = metav1.NamespaceDefault
 		}
 
-		name := s.ObjectMeta.Name
+		name := s.GetName()
 
 		// Process the secrets to filename/priv key map
 		keyFiles, err := skh(s.Data)

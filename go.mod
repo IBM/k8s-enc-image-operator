@@ -5,7 +5,7 @@ go 1.24.3
 require (
 	github.com/IBM/keyprotect-go-client v0.15.1
 	github.com/pkg/errors v0.9.1
-	github.com/sirupsen/logrus v1.9.3
+	github.com/sirupsen/logrus v1.9.4
 	k8s.io/api v0.34.2
 	k8s.io/apimachinery v0.34.2
 	k8s.io/client-go v0.34.2

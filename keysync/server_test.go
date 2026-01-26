@@ -46,7 +46,7 @@ func TestKeySync(t *testing.T) {
 	}()
 
 	var (
-		fakeClient = fake.NewSimpleClientset()
+		fakeClient = fake.NewClientset()
 		namespace  = "default"
 		interval   = 5 * time.Second
 	)
@@ -153,7 +153,7 @@ func TestKeySyncAddHandlersBeforeStart(t *testing.T) {
 	}()
 
 	var (
-		fakeClient = fake.NewSimpleClientset()
+		fakeClient = fake.NewClientset()
 		namespace  = "default"
 		interval   = 5 * time.Second
 	)
@@ -295,7 +295,7 @@ func TestKeySyncAddHandlersAfterStart(t *testing.T) {
 	}()
 
 	var (
-		fakeClient = fake.NewSimpleClientset()
+		fakeClient = fake.NewClientset()
 		namespace  = "default"
 		interval   = 5 * time.Second
 	)

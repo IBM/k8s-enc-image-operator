@@ -10,8 +10,8 @@ jobs:
 
   test:
     env:
-      GOLANGCI_LINT_VERSION: v2.1.6
-      GOSEC_VERSION: v2.22.4
+      GOLANGCI_LINT_VERSION: v2.6.2
+      GOSEC_VERSION: v2.22.10
 
 
     name: Test

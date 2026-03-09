@@ -10,8 +10,8 @@ jobs:
 
   test:
     env:
-      GOLANGCI_LINT_VERSION: v2.6.2
-      GOSEC_VERSION: v2.22.10
+      GOLANGCI_LINT_VERSION: v2.11.2
+      GOSEC_VERSION: v2.24.7
 
 
     name: Test
@@ -23,7 +23,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.25'
+        go-version: '1.26'
         check-latest: true
 
     - run: go version

@@ -1,5 +1,7 @@
 github.com/IBM/keyprotect-go-client v0.16.0 h1:FAel9YYJvRym4fuj/SIwtpT3RkDBJo+bLkMNzFEeSpA=
 github.com/IBM/keyprotect-go-client v0.16.0/go.mod h1:ya2yvOPBIgZUWiPDsHDgxeYrTy1pQk/70MY61k6Fdyw=
+github.com/IBM/keyprotect-go-client v0.17.2 h1:hSweHS9QJT1hU7apTpK54r4eUv5gvuv45utiTO+DZwk=
+github.com/IBM/keyprotect-go-client v0.17.2/go.mod h1:gMJdUzT2EKeQd2jJKRU6mBRrx0Na4yUCQvA+lQbnEt8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=

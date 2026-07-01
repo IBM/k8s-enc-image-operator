@@ -2,6 +2,8 @@ github.com/IBM/keyprotect-go-client v0.16.0 h1:FAel9YYJvRym4fuj/SIwtpT3RkDBJo+bL
 github.com/IBM/keyprotect-go-client v0.16.0/go.mod h1:ya2yvOPBIgZUWiPDsHDgxeYrTy1pQk/70MY61k6Fdyw=
 github.com/IBM/keyprotect-go-client v0.17.2 h1:hSweHS9QJT1hU7apTpK54r4eUv5gvuv45utiTO+DZwk=
 github.com/IBM/keyprotect-go-client v0.17.2/go.mod h1:gMJdUzT2EKeQd2jJKRU6mBRrx0Na4yUCQvA+lQbnEt8=
+github.com/IBM/keyprotect-go-client v0.17.3 h1:cuA/mnjGTNvW9wS7NHYGLi2nmwqIl4ysMJpG2NlYPiU=
+github.com/IBM/keyprotect-go-client v0.17.3/go.mod h1:4avwSU4VqKeN0KWuzBc49ahCK007kCJ7UM6/i9/RfpU=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
@@ -78,6 +80,8 @@ github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=
 github.com/x448/float16 v0.8.4/go.mod h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcYsOfg=
 go.yaml.in/yaml/v2 v2.4.3 h1:6gvOSjQoTB3vt1l+CU+tSyi/HOjfOjRLJ4YwYZGwRO0=
 go.yaml.in/yaml/v2 v2.4.3/go.mod h1:zSxWcmIDjOzPXpjlTTbAsKokqkDNAVtZO0WOMiT90s8=
+go.yaml.in/yaml/v2 v2.4.4 h1:tuyd0P+2Ont/d6e2rl3be67goVK4R6deVxCUX5vyPaQ=
+go.yaml.in/yaml/v2 v2.4.4/go.mod h1:gMZqIpDtDqOfM0uNfy0SkpRhvUryYH0Z6wdMYcacYXQ=
 go.yaml.in/yaml/v3 v3.0.4 h1:tfq32ie2Jv2UxXFdLJdh3jXuOzWiL1fo0bu/FbuKpbc=
 go.yaml.in/yaml/v3 v3.0.4/go.mod h1:DhzuOOF2ATzADvBadXxruRBLzYTpT36CKvDb3+aBEFg=
 golang.org/x/net v0.56.0 h1:Rw8j/hFzGvJUZwNBXnAtf5sVDVt+65SK2C7IxCxZt5o=

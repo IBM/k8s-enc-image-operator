@@ -8,7 +8,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4
 	k8s.io/api v0.36.3
 	k8s.io/apimachinery v0.36.3
-	k8s.io/client-go v0.36.3
+	k8s.io/client-go v1.5.2
 )
 
 require (

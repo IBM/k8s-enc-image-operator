@@ -3,7 +3,7 @@ module github.com/lumjjb/k8s-enc-image-operator
 go 1.26.4
 
 require (
-	github.com/IBM/keyprotect-go-client v0.17.3
+	github.com/IBM/keyprotect-go-client v1.0.0
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.10.2
 	k8s.io/api v0.37.0

@@ -15,24 +15,26 @@
 package sechandlers
 
 import (
-	"context"
 	"encoding/base64"
-	kp "github.com/IBM/keyprotect-go-client"
+	"encoding/json"
+	"io"
+	"strings"
+
+	core "github.com/IBM/go-sdk-core/v5/core"
+	kp "github.com/IBM/keyprotect-go-client/ibmkeyprotectapiv2"
 	"github.com/lumjjb/k8s-enc-image-operator/keysync/sechandlers"
 	"github.com/pkg/errors"
 )
 
 type keyprotectSecretKeyHandler struct {
-	kpClient *kp.Client
+	kpClient   *kp.IbmKeyProtectApiV2
+	instanceID string
 }
 
 // handleSecret unwraps the keys by calling the key protect unwrap service, returning a
 // map of key filenames to data to store. It returns a single key filename -> data map
 // in the keyprotect implementation to meet the sechandlers.SecretKeyHandler func definition
 func (skh *keyprotectSecretKeyHandler) handleSecret(data map[string][]byte) (map[string][]byte, error) {
-	var err error
-	retdata := map[string][]byte{}
-
 	keyid, ok := data["rootkeyid"]
 	if !ok {
 		return nil, errors.New("rootkeyid not in secret")
@@ -43,37 +45,51 @@ func (skh *keyprotectSecretKeyHandler) handleSecret(data map[string][]byte) (map
 		return nil, errors.New("ciphertext not in secret")
 	}
 
-	b64content, err := skh.kpClient.Unwrap(context.TODO(), string(keyid), ciphertext, nil)
+	bodyJSON, err := json.Marshal(map[string]string{"ciphertext": string(ciphertext)})
 	if err != nil {
 		return nil, err
 	}
 
-	var content []byte
-	content, err = base64.StdEncoding.DecodeString(string(b64content))
+	opts := skh.kpClient.NewUnwrapKeyOptions(
+		string(keyid),
+		skh.instanceID,
+		io.NopCloser(strings.NewReader(string(bodyJSON))),
+	)
+
+	result, _, err := skh.kpClient.UnwrapKey(opts)
 	if err != nil {
 		return nil, err
 	}
 
-	retdata["kpkey"] = content
+	if result.Plaintext == nil {
+		return nil, errors.New("unwrap response contained no plaintext")
+	}
 
-	return retdata, nil
+	content, err := base64.StdEncoding.DecodeString(*result.Plaintext)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string][]byte{"kpkey": content}, nil
 }
 
 // NewKeyprotectSecretKeyHandler returns a secret handler for keyprotect given the keyprotect configuration
 func NewKeyprotectSecretKeyHandler(kpUrl, instanceid, apikey string) (sechandlers.SecretKeyHandler, error) {
-	cc := kp.ClientConfig{
-		BaseURL:    kpUrl,
-		APIKey:     apikey,
-		InstanceID: instanceid,
+	auth := &core.IamAuthenticator{
+		ApiKey: apikey,
 	}
 
-	kpClient, err := kp.New(cc, kp.DefaultTransport())
+	kpClient, err := kp.NewIbmKeyProtectApiV2(&kp.IbmKeyProtectApiV2Options{
+		URL:           kpUrl,
+		Authenticator: auth,
+	})
 	if err != nil {
 		return nil, err
 	}
 
 	kpskh := keyprotectSecretKeyHandler{
-		kpClient: kpClient,
+		kpClient:   kpClient,
+		instanceID: instanceid,
 	}
 
 	return func(data map[string][]byte) (map[string][]byte, error) {

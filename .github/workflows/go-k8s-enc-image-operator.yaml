@@ -10,9 +10,7 @@ jobs:
 
   test:
     env:
-      GOLANGCI_LINT_VERSION: v2.11.2
-      GOSEC_VERSION: v2.24.7
-
+      GOSEC_VERSION: v2.29.0
 
     name: Test
     runs-on: ubuntu-latest
@@ -35,7 +33,11 @@ jobs:
         sudo apt-get install -y libseccomp-dev gnutls-bin
 
     - name: Install golangci lint
-      run: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin ${GOLANGCI_LINT_VERSION}
+      uses: golangci/golangci-lint-action@v9
+      with:
+        version: v2.14.0
+        install-mode: binary
+        install-only: true
 
     - name: Install gosec
       run: curl -sfL https://raw.githubusercontent.com/securego/gosec/master/install.sh | sh -s -- -b $(go env GOPATH)/bin ${GOSEC_VERSION}

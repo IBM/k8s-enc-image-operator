@@ -6,7 +6,9 @@
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": ["^\\.github/workflows/.+\\.ya?ml$"],
+      "managerFilePatterns": [
+        "/^\\.github/workflows/.+\\.ya?ml$/"
+      ],
       "matchStrings": [
         "uses: golangci/golangci-lint-action[^\\n]+\\n\\s+with:\\n(?:[^\\n]+\\n)*?\\s+version:\\s*(?<currentValue>v[\\d.]+)"
       ],
@@ -15,7 +17,9 @@
     },
     {
       "customType": "regex",
-      "fileMatch": ["^\\.github/workflows/.+\\.ya?ml$"],
+      "managerFilePatterns": [
+        "/^\\.github/workflows/.+\\.ya?ml$/"
+      ],
       "matchStrings": [
         "GOSEC_VERSION:\\s*(?<currentValue>v[\\d.]+)"
       ],

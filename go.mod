@@ -3,7 +3,7 @@ module github.com/lumjjb/k8s-enc-image-operator
 go 1.26.4
 
 require (
-	github.com/IBM/go-sdk-core/v5 v5.24.0
+	github.com/IBM/go-sdk-core/v5 v5.25.0
 	github.com/IBM/keyprotect-go-client v1.0.2
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.10.2

@@ -10,7 +10,7 @@ jobs:
 
   test:
     env:
-      GOSEC_VERSION: v2.29.0
+      GOSEC_VERSION: v2.30.0
 
     name: Test
     runs-on: ubuntu-latest

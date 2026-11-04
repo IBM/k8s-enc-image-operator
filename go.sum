@@ -1,7 +1,7 @@
 github.com/IBM/go-sdk-core/v5 v5.25.0 h1:wQEw6Cb9akKekjF22GsreARg6lmEszonVk3pzzS1fWw=
 github.com/IBM/go-sdk-core/v5 v5.25.0/go.mod h1:B4JsTbYRtgrTY+jjDARcPtITOMLEbyYtB4FblDn2RdQ=
-github.com/IBM/keyprotect-go-client v1.0.2 h1:/2pi71KOq70sUbxe24lTkB6a2G9nc3aez/CYhRABwqc=
-github.com/IBM/keyprotect-go-client v1.0.2/go.mod h1:aZgNOvyjZPWD6Q9QPm/eVqJcRuZUDucjJ2/Sz2eI/AE=
+github.com/IBM/keyprotect-go-client v1.1.0 h1:TmPeEviEEE5fsQK8TpNZ/fblud9PCV7ZrhuQKjWhaQM=
+github.com/IBM/keyprotect-go-client v1.1.0/go.mod h1:q5beQeQA0ChFa46s31+aK2YuojCukitDaMYNBJgmJkY=
 github.com/Masterminds/semver/v3 v3.4.0 h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1Xbatp0=
 github.com/Masterminds/semver/v3 v3.4.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

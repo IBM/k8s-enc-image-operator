@@ -133,15 +133,22 @@ We are using golang 1.19.12 or later, expect problems with earlier releases.
 
 ## End-to-end tests
 
-The helm installation is tested end-to-end on a [kind](https://kind.sigs.k8s.io/)
-cluster (this also runs in CI):
+The helm installation is tested end-to-end with both supported container
+runtimes (this also runs in CI):
 
 ```
-$ make e2e-helm
+$ make e2e-helm-containerd   # kind cluster with containerd
+$ make e2e-helm-crio         # minikube cluster with --container-runtime=cri-o
 ```
 
 This builds the keysync image from source, installs the helm chart, and checks
 that keys from `type=key` secrets are synced to (and removed from) the nodes.
-It uses the `kind` cluster if it exists, or creates and deletes one otherwise.
-See [scripts/e2e-helm.sh](scripts/e2e-helm.sh) for the supported environment
-variables (e.g. `CONTAINER_TOOL=podman`, `KIND_CLUSTER_NAME`).
+It also sets up image decryption on the nodes (with [imgcrypt](https://github.com/containerd/imgcrypt)
+for containerd, built into CRI-O) and a local registry, and checks that an
+encrypted image cannot be run without the key, but runs once the key has been
+synced by the operator.
+
+The script creates (and deletes) its own cluster and uses its own kubeconfig,
+so your default kubeconfig is not modified; set `KEEP_CLUSTER=true` to keep
+the cluster for debugging. See [scripts/e2e-helm.sh](scripts/e2e-helm.sh) for
+the other supported environment variables (e.g. `CONTAINER_TOOL=podman`).

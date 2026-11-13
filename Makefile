@@ -1,4 +1,4 @@
-.PHONY: vendor check all build fmt copyright clean operator operator-push operator-bundle e2e-helm FORCE
+.PHONY: vendor check all build fmt copyright clean operator operator-push operator-bundle e2e-helm e2e-helm-containerd e2e-helm-crio FORCE
 
 all: build
 
@@ -47,9 +47,16 @@ vendor:
 test:
 	go test ./...
 
-# End-to-end test of the helm chart on a kind cluster, see scripts/e2e-helm.sh
+# End-to-end tests of the helm chart, see scripts/e2e-helm.sh
+# (E2E_RUNTIME selects the runtime for e2e-helm, default: containerd)
 e2e-helm:
 	scripts/e2e-helm.sh
+
+e2e-helm-containerd:
+	E2E_RUNTIME=containerd scripts/e2e-helm.sh
+
+e2e-helm-crio:
+	E2E_RUNTIME=cri-o scripts/e2e-helm.sh
 
 clean:
 	rm -rf bin/

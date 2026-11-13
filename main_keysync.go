@@ -18,13 +18,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"math"
 	"os"
 	"time"
 
 	keyprotect "github.com/lumjjb/k8s-enc-image-operator/keyprotect"
 	"github.com/lumjjb/k8s-enc-image-operator/keysync"
-	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -137,22 +137,23 @@ func main() {
 		*/
 	}
 
-	logrus.Printf("Starting KeySync server with sync-dir %v, interval %v s, namespace %v",
-		ksc.KeySyncDir,
-		ksc.Interval/time.Second,
-		ksc.Namespace)
+	slog.Info("Starting KeySync server",
+		"syncDir", ksc.KeySyncDir,
+		"interval", ksc.Interval,
+		"namespace", ksc.Namespace)
 
-	logrus.Printf("Private key files will be persisted with %v permissions",
-		ksc.KeyFilePermissions)
+	slog.Info("Private key files will be persisted with permissions",
+		"permissions", ksc.KeyFilePermissions)
 
 	if ksc.KeyFileOwnerUID != nil && ksc.KeyFileOwnerGID != nil {
-		logrus.Printf("Private key files will be persisted with %d:%d ownership (this might not work unless running as root or having CAP_CHOWN)",
-			*ksc.KeyFileOwnerUID,
-			*ksc.KeyFileOwnerGID)
+		slog.Info("Private key files will be persisted with ownership (this might not work unless running as root or having CAP_CHOWN)",
+			"uid", *ksc.KeyFileOwnerUID,
+			"gid", *ksc.KeyFileOwnerGID)
 	}
 
 	if err := ks.Start(); err != nil {
-		logrus.Fatalf("KeySync failure: %v", err)
+		slog.Error("KeySync failure", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -182,11 +183,10 @@ func keyprotectConfigKubeSecretThread(clientset kubernetes.Interface, namespace 
 				}
 				oldData = string(d)
 
-				logrus.Printf("New keyprotect config detected in secrets, configuring...")
+				slog.Info("New keyprotect config detected in secrets, configuring...")
 				kpskh, err := keyprotect.GetSecKeyHandlerFromConfig(d)
 				if err != nil {
-					// log err
-					logrus.Errorf("Unable to parse keyprotect config: %v", err)
+					slog.Error("Unable to parse keyprotect config", "error", err)
 					continue
 				}
 				ks.AddSecretKeyHandler("kp-key", kpskh)

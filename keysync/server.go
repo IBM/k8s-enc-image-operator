@@ -19,6 +19,7 @@ import (
 	"crypto/md5" // #nosec G501 Usage is not related to security
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -27,7 +28,6 @@ import (
 
 	"github.com/lumjjb/k8s-enc-image-operator/keysync/sechandlers"
 
-	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -153,7 +153,7 @@ func (ks *KeySyncServer) Start() error {
 				FieldSelector: keyTypeFieldSelectorPrefix + secType,
 			})
 			if err != nil {
-				logrus.Errorf("Error listing secrets: %v", err)
+				slog.Error("Error listing secrets", "secretType", secType, "error", err)
 				continue
 			}
 			filenameMap := ks.syncSecretsToLocalKeys(secList, skh)
@@ -214,7 +214,7 @@ func (ks *KeySyncServer) syncSecretsToLocalKeys(secList *corev1.SecretList, skh 
 		// Process the secrets to filename/priv key map
 		keyFiles, err := skh(s.Data)
 		if err != nil {
-			logrus.Errorf("Unable to process secret %s: %v", name, err)
+			slog.Error("Unable to process secret", "secret", name, "error", err)
 			continue
 		}
 
@@ -233,10 +233,10 @@ func (ks *KeySyncServer) syncSecretsToLocalKeys(secList *corev1.SecretList, skh 
 			path := filepath.Join(ks.keySyncDir, filename)
 
 			if !fileExists(path) {
-				logrus.Printf("Syncing new key: %v", filename)
+				slog.Info("Syncing new key", "filename", filename)
 				err := ks.writeKeyFile(path, data)
 				if err != nil {
-					logrus.Errorf("Unable to write file %s: %v", path, err)
+					slog.Error("Unable to write file", "path", path, "error", err)
 					continue
 				}
 			}
@@ -250,7 +250,7 @@ func (ks *KeySyncServer) cleanupKeys(filenameMap map[string]bool) {
 	files, err := os.ReadDir(ks.keySyncDir)
 	if err != nil {
 		files = []fs.DirEntry{}
-		logrus.Errorf("Unable to list directory for cleanup")
+		slog.Error("Unable to list directory for cleanup", "dir", ks.keySyncDir, "error", err)
 	}
 
 	// Remove all files that are not tracked based on filename map
@@ -259,9 +259,9 @@ func (ks *KeySyncServer) cleanupKeys(filenameMap map[string]bool) {
 		filename := file.Name()
 		if !filenameMap[filename] {
 			path := filepath.Join(ks.keySyncDir, filename)
-			logrus.Printf("Deleting old key: %v", filename)
+			slog.Info("Deleting old key", "filename", filename)
 			if err = os.Remove(path); err != nil {
-				logrus.Errorf("Unable to delete old key %v, %v", path, err)
+				slog.Error("Unable to delete old key", "path", path, "error", err)
 			}
 		}
 	}

@@ -24,11 +24,12 @@ import (
 )
 
 // keyprotectConfig example, is a json in the following format
-// {
-//     "keyprotect-url": "https://us-south.kms.cloud.ibm.com",
-//     "instance-id": "a3c5e3g5-9ef7-4838-a285-398efb23e6f3",
-//     "apikey": "ZWh0Y.................................4Tsxbz",
-// }
+//
+//	{
+//	    "keyprotect-url": "https://us-south.kms.cloud.ibm.com",
+//	    "instance-id": "a3c5e3g5-9ef7-4838-a285-398efb23e6f3",
+//	    "apikey": "ZWh0Y.................................4Tsxbz",
+//	}
 type keyprotectConfig struct {
 	KeyprotectUrl string `json:"keyprotect-url"`
 	InstanceId    string `json:"instance-id"`

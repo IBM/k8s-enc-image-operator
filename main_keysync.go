@@ -21,10 +21,13 @@ import (
 	"log/slog"
 	"math"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	keyprotect "github.com/lumjjb/k8s-enc-image-operator/keyprotect"
 	"github.com/lumjjb/k8s-enc-image-operator/keysync"
+	"github.com/lumjjb/k8s-enc-image-operator/keysync/sechandlers"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -78,33 +81,29 @@ func main() {
 		panic(err)
 	}
 
-	var keyFilePermissions uint32
-	n, err := fmt.Sscanf(inputFlags.keyFilePermissions, "%o", &keyFilePermissions)
-	if err != nil || n != 1 {
-		panic("invalid permissions specified")
+	keyFilePermissions, err := parseKeyFilePermissions(inputFlags.keyFilePermissions)
+	if err != nil {
+		panic(err)
 	}
 
-	var keyFileOwnerUID, keyFileOwnerGID *int
-	if inputFlags.keyFileOwnership != "" {
-		keyFileOwnerUID, keyFileOwnerGID = new(int), new(int)
-		n, err = fmt.Sscanf(inputFlags.keyFileOwnership, "%d:%d", keyFileOwnerUID, keyFileOwnerGID)
-		if err != nil || n != 2 || *keyFileOwnerUID < 0 || *keyFileOwnerGID < 0 {
-			panic("invalid ownership specified")
-		}
+	keyFileOwnerUID, keyFileOwnerGID, err := parseKeyFileOwnership(inputFlags.keyFileOwnership)
+	if err != nil {
+		panic(err)
+	}
+
+	interval, err := parseInterval(inputFlags.interval)
+	if err != nil {
+		panic(err)
 	}
 
 	namespace := os.Getenv(NamespaceEnv)
-	if inputFlags.interval > math.MaxInt64 {
-		panic("input interval caused conversion overflow")
-	}
-	interval := time.Duration(inputFlags.interval) * time.Second
 
 	ksc := keysync.KeySyncServerConfig{
 		K8sClient:          clientset,
 		Interval:           interval,
 		KeySyncDir:         inputFlags.dir,
 		Namespace:          namespace,
-		KeyFilePermissions: os.FileMode(keyFilePermissions),
+		KeyFilePermissions: keyFilePermissions,
 		KeyFileOwnerUID:    keyFileOwnerUID,
 		KeyFileOwnerGID:    keyFileOwnerGID,
 	}
@@ -117,7 +116,7 @@ func main() {
 		}
 		ks.AddSecretKeyHandler("kp-key", kpskh)
 	} else if inputFlags.keyprotectConfigKubeSecret != "" {
-		go keyprotectConfigKubeSecretThread(clientset, namespace, inputFlags.keyprotectConfigKubeSecret, ks, interval)
+		go keyprotectConfigKubeSecretThread(clientset, namespace, inputFlags.keyprotectConfigKubeSecret, ks.AddSecretKeyHandler, interval)
 		/*
 			secClient := clientset.CoreV1().Secrets(namespace)
 			s, err := secClient.Get(inputFlags.keyprotectConfigKubeSecret, metav1.GetOptions{})
@@ -157,40 +156,78 @@ func main() {
 	}
 }
 
+// parseKeyFilePermissions parses an octal permission string such as "0600".
+func parseKeyFilePermissions(s string) (os.FileMode, error) {
+	perm, err := strconv.ParseUint(s, 8, 32)
+	if err != nil || perm > 0777 {
+		return 0, fmt.Errorf("invalid permissions specified: %q", s)
+	}
+	return os.FileMode(perm), nil
+}
+
+// parseKeyFileOwnership parses an ownership string in UID:GID format. An empty
+// string means the ownership is not changed and returns nil for both.
+func parseKeyFileOwnership(s string) (*int, *int, error) {
+	if s == "" {
+		return nil, nil, nil
+	}
+	uidStr, gidStr, ok := strings.Cut(s, ":")
+	if !ok {
+		return nil, nil, fmt.Errorf("invalid ownership specified: %q", s)
+	}
+	uid, uidErr := strconv.Atoi(uidStr)
+	gid, gidErr := strconv.Atoi(gidStr)
+	if uidErr != nil || gidErr != nil || uid < 0 || gid < 0 || uid > int(math.MaxUint32) || gid > int(math.MaxUint32) {
+		return nil, nil, fmt.Errorf("invalid ownership specified: %q", s)
+	}
+	return &uid, &gid, nil
+}
+
+// parseInterval converts the interval in seconds to a duration.
+func parseInterval(seconds uint) (time.Duration, error) {
+	if uint64(seconds) > uint64(math.MaxInt64/time.Second) {
+		return 0, fmt.Errorf("interval %d s is too large", seconds)
+	}
+	return time.Duration(seconds) * time.Second, nil
+}
+
 // keyprotectConfigKubeSecretThread is a helper function that tries to retrieve the kube secret containing the
 // keyprotect config and add the handler to the key sync server. Meant to run as a thread.
-func keyprotectConfigKubeSecretThread(clientset kubernetes.Interface, namespace string, secretName string, ks *keysync.KeySyncServer, interval time.Duration) {
-	first := true
+func keyprotectConfigKubeSecretThread(clientset kubernetes.Interface, namespace string, secretName string, addHandler addSecretKeyHandlerFunc, interval time.Duration) {
 	oldData := ""
 	for {
-		if !first {
-			<-time.After(interval)
-		} else {
-			first = false
-		}
-
-		secClient := clientset.CoreV1().Secrets(namespace)
-		s, err := secClient.Get(context.Background(), secretName, metav1.GetOptions{})
-		if err != nil {
-			continue
-		}
-
-		if s.Data != nil {
-			d := s.Data["config.json"]
-			if len(d) > 0 {
-				if string(d) == oldData {
-					continue
-				}
-				oldData = string(d)
-
-				slog.Info("New keyprotect config detected in secrets, configuring...")
-				kpskh, err := keyprotect.GetSecKeyHandlerFromConfig(d)
-				if err != nil {
-					slog.Error("Unable to parse keyprotect config", "error", err)
-					continue
-				}
-				ks.AddSecretKeyHandler("kp-key", kpskh)
-			}
-		}
+		oldData = syncKeyprotectConfig(clientset, namespace, secretName, addHandler, oldData)
+		<-time.After(interval)
 	}
+}
+
+// addSecretKeyHandlerFunc registers a secret key handler, i.e.
+// (*keysync.KeySyncServer).AddSecretKeyHandler.
+type addSecretKeyHandlerFunc func(secretType string, skh sechandlers.SecretKeyHandler)
+
+// syncKeyprotectConfig reads the keyprotect config from the kube secret and,
+// if it changed since oldData, registers a keyprotect handler for it. It
+// returns the config data to compare against on the next call.
+func syncKeyprotectConfig(clientset kubernetes.Interface, namespace string, secretName string, addHandler addSecretKeyHandlerFunc, oldData string) string {
+	secClient := clientset.CoreV1().Secrets(namespace)
+	s, err := secClient.Get(context.Background(), secretName, metav1.GetOptions{})
+	if err != nil {
+		return oldData
+	}
+
+	d := s.Data["config.json"]
+	if len(d) == 0 || string(d) == oldData {
+		return oldData
+	}
+
+	slog.Info("New keyprotect config detected in secrets, configuring...")
+	kpskh, err := keyprotect.GetSecKeyHandlerFromConfig(d)
+	if err != nil {
+		slog.Error("Unable to parse keyprotect config", "error", err)
+		// Remember the invalid config so it is not re-parsed on every
+		// interval; a changed config is picked up again.
+		return string(d)
+	}
+	addHandler("kp-key", kpskh)
+	return string(d)
 }

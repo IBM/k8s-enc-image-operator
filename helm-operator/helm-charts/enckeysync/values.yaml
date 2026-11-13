@@ -3,3 +3,7 @@
 # Declare variables to be passed into your templates.
 keysDir: /etc/crio/keys/enc-key-sync
 isOpenShift: false
+image:
+  repository: lumjjb/keysync
+  tag: latest
+  pullPolicy: Always

@@ -42,7 +42,7 @@ vendor:
 		go mod verify
 
 test:
-	go test ./keysync
+	go test ./...
 
 clean:
 	rm -rf bin/

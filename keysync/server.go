@@ -131,39 +131,53 @@ func NewKeySyncServer(ksc KeySyncServerConfig) *KeySyncServer {
 // specified.
 // Only one instance of Start should be run per KeySyncServer
 func (ks *KeySyncServer) Start() error {
-	secClient := ks.k8sClient.CoreV1().Secrets(ks.namespace)
-
-	// Create channel for immediate call for the first time
 	for {
 		<-time.After(ks.interval)
-
-		// Check if new handlers to add
-		ks.addKeyHandlersMutex.Lock()
-		for k, v := range ks.addKeyHandlers {
-			ks.keyHandlers[k] = v
-		}
-		ks.addKeyHandlers = map[string]sechandlers.SecretKeyHandler{}
-		ks.addKeyHandlersMutex.Unlock()
-
-		// Get list of new keys so that we can clean up obselete keys for revocation reasons
-		allFilenameMap := map[string]bool{}
-
-		for secType, skh := range ks.keyHandlers {
-			secList, err := secClient.List(context.Background(), metav1.ListOptions{
-				FieldSelector: keyTypeFieldSelectorPrefix + secType,
-			})
-			if err != nil {
-				slog.Error("Error listing secrets", "secretType", secType, "error", err)
-				continue
-			}
-			filenameMap := ks.syncSecretsToLocalKeys(secList, skh)
-
-			allFilenameMap = combineFilenameMap(allFilenameMap, filenameMap)
-		}
-
-		// Purge keys which are not new
-		ks.cleanupKeys(allFilenameMap)
+		ks.syncOnce()
 	}
+}
+
+// syncOnce performs a single sync of all secrets to local key files and
+// removes key files whose secrets no longer exist.
+func (ks *KeySyncServer) syncOnce() {
+	secClient := ks.k8sClient.CoreV1().Secrets(ks.namespace)
+
+	// Check if new handlers to add
+	ks.addKeyHandlersMutex.Lock()
+	for k, v := range ks.addKeyHandlers {
+		ks.keyHandlers[k] = v
+	}
+	ks.addKeyHandlers = map[string]sechandlers.SecretKeyHandler{}
+	ks.addKeyHandlersMutex.Unlock()
+
+	// Get list of new keys so that we can clean up obselete keys for revocation reasons
+	allFilenameMap := map[string]bool{}
+	listFailed := false
+
+	for secType, skh := range ks.keyHandlers {
+		secList, err := secClient.List(context.Background(), metav1.ListOptions{
+			FieldSelector: keyTypeFieldSelectorPrefix + secType,
+		})
+		if err != nil {
+			slog.Error("Error listing secrets", "secretType", secType, "error", err)
+			listFailed = true
+			continue
+		}
+		filenameMap := ks.syncSecretsToLocalKeys(secList, skh)
+
+		allFilenameMap = combineFilenameMap(allFilenameMap, filenameMap)
+	}
+
+	// If any list failed we do not know which keys are still valid, so skip
+	// the cleanup instead of deleting every key of the failed type from disk
+	// (which would break image pulls until the API is reachable again).
+	if listFailed {
+		slog.Warn("Skipping cleanup of old keys because listing secrets failed")
+		return
+	}
+
+	// Purge keys which are not new
+	ks.cleanupKeys(allFilenameMap)
 }
 
 // AddKeyHandler will queue adding new handlers to the key sync server that will
@@ -269,7 +283,8 @@ func (ks *KeySyncServer) cleanupKeys(filenameMap map[string]bool) {
 
 // writeKeyFile writes key into the specified file
 // and makes sure that the file has the specified
-// permissions and ownership
+// permissions and ownership. If that fails, the file is removed so that the
+// next sync retries instead of treating the key as already synced.
 func (ks *KeySyncServer) writeKeyFile(filepath string, data []byte) error {
 	// Writing data into the specified file
 	err := os.WriteFile(filepath, data, ks.keyFilePermissions)
@@ -277,6 +292,19 @@ func (ks *KeySyncServer) writeKeyFile(filepath string, data []byte) error {
 		return err
 	}
 
+	if err := ks.setKeyFileAttributes(filepath); err != nil {
+		if rmErr := os.Remove(filepath); rmErr != nil {
+			slog.Error("Unable to remove key file", "path", filepath, "error", rmErr)
+		}
+		return err
+	}
+
+	return nil
+}
+
+// setKeyFileAttributes makes sure that the file has the configured
+// permissions and ownership.
+func (ks *KeySyncServer) setKeyFileAttributes(filepath string) error {
 	// Getting information about the written file
 	fileInfo, err := os.Stat(filepath)
 	if err != nil {
@@ -292,12 +320,21 @@ func (ks *KeySyncServer) writeKeyFile(filepath string, data []byte) error {
 		}
 	}
 
-	// Owner configuration when a specific uid:gid is configured
-	// in order for this to work CAP_CHOWN is needed
+	// Owner configuration when a specific uid and/or gid is configured.
+	// -1 leaves the respective id unchanged. Changing the owner (or the group
+	// to one the process is not a member of) requires CAP_CHOWN.
+	stat := fileInfo.Sys().(*syscall.Stat_t)
+	uid, gid := -1, -1
 	// #nosec G115 userid and groupid should not be bigger then uint32
-	if ((ks.keyFileOwnerUID != nil) && (fileInfo.Sys().(*syscall.Stat_t).Uid != uint32(*ks.keyFileOwnerUID))) ||
-		((ks.keyFileOwnerGID != nil) && (fileInfo.Sys().(*syscall.Stat_t).Gid != uint32(*ks.keyFileOwnerGID))) {
-		err = os.Chown(filepath, *ks.keyFileOwnerUID, *ks.keyFileOwnerGID)
+	if ks.keyFileOwnerUID != nil && stat.Uid != uint32(*ks.keyFileOwnerUID) {
+		uid = *ks.keyFileOwnerUID
+	}
+	// #nosec G115 userid and groupid should not be bigger then uint32
+	if ks.keyFileOwnerGID != nil && stat.Gid != uint32(*ks.keyFileOwnerGID) {
+		gid = *ks.keyFileOwnerGID
+	}
+	if uid != -1 || gid != -1 {
+		err = os.Chown(filepath, uid, gid)
 		if err != nil {
 			return err
 		}

@@ -1,4 +1,4 @@
-.PHONY: vendor check all build fmt clean operator operator-push operator-bundle FORCE
+.PHONY: vendor check all build fmt copyright clean operator operator-push operator-bundle FORCE
 
 all: build
 
@@ -16,6 +16,9 @@ fmt:
 	scripts/copyright-check.sh
 	gosec ./...
 	golangci-lint run --timeout 10m0s
+
+copyright:
+	scripts/copyright.sh
 
 bin/keysync: keysync/* main_keysync.go
 	go build -o bin/keysync main_keysync.go

@@ -8,7 +8,7 @@ THISYEAR=$(date +"%Y")
 for GOFILE in "${GOSRCFILES[@]}"; do
   # If no copyright at all
   if ! grep -q "Licensed under the Apache License, Version 2.0" $GOFILE; then
-    echo "// Copyright ${THISYEAR}  Portieris Authors.
+    echo "// Copyright ${THISYEAR} k8s-enc-image-operator authors.
 //
 // Licensed under the Apache License, Version 2.0 (the \"License\");
 // you may not use this file except in compliance with the License.
@@ -28,16 +28,16 @@ done
 # Check for multi-line in new files
 GOSRCFILES=($(git diff --name-only origin/master | grep '\.go$'))
 for GOFILE in "${GOSRCFILES[@]}"; do
-  if grep -q "Copyright .* k8s-enc-image-operator Authors." $GOFILE; then
-      YEAR_LINE=$(grep "Copyright .* k8s-enc-image-operator Authors." $GOFILE)
-      YEARS=($(echo $YEAR_LINE | grep -oE '\d{4}'))
+  if grep -q "Copyright .* k8s-enc-image-operator authors." $GOFILE; then
+      YEAR_LINE=$(grep "Copyright .* k8s-enc-image-operator authors." $GOFILE)
+      YEARS=($(echo $YEAR_LINE | grep -oE '[0-9]{4}'))
       if [[ ${#YEARS[@]} == 1 ]]; then
          if [[ ${YEARS[0]} != ${THISYEAR} ]]; then
-            sed -i '' -e "s|Copyright ${YEARS[0]} k8s-enc-image-operator Authors.|Copyright ${THISYEAR} k8s-enc-image-operator Authors.|" $GOFILE
+            sed -i.bak -e "s|Copyright ${YEARS[0]} k8s-enc-image-operator authors.|Copyright ${YEARS[0]}, ${THISYEAR} k8s-enc-image-operator authors.|" "$GOFILE" && rm -f "$GOFILE.bak"
          fi
       elif [[ ${#YEARS[@]} == 2 ]]; then
         if [[ ${YEARS[1]} != ${THISYEAR} ]]; then
-            sed -i '' -e "s|Copyright ${YEARS[0]}, ${YEARS[1]} k8s-enc-image-operator Authors.|Copyright ${YEARS[0]}, ${THISYEAR} k8s-enc-image-operator Authors.|" $GOFILE
+            sed -i.bak -e "s|Copyright ${YEARS[0]}, ${YEARS[1]} k8s-enc-image-operator authors.|Copyright ${YEARS[0]}, ${THISYEAR} k8s-enc-image-operator authors.|" "$GOFILE" && rm -f "$GOFILE.bak"
         fi
       fi
   fi

@@ -29,8 +29,8 @@ done
 if git fetch origin ; then
     GOSRCFILES=($(git diff --name-only origin/master | grep '\.go$'))
     for GOFILE in "${GOSRCFILES[@]}"; do
-    if grep -q "Copyright .* k8s-enc-image-operator Authors." $GOFILE; then
-        YEAR_LINE=$(grep "Copyright .* k8s-enc-image-operator Authors." $GOFILE)
+    if grep -q "Copyright .* k8s-enc-image-operator authors." $GOFILE; then
+        YEAR_LINE=$(grep "Copyright .* k8s-enc-image-operator authors." $GOFILE)
         YEARS=($(echo $YEAR_LINE | grep -oE '[0-9]{4}'))
         if [[ ${#YEARS[@]} == 1 ]]; then
             if [[ ${YEARS[0]} != ${THISYEAR} ]]; then
@@ -52,3 +52,5 @@ else
     fail "Failed to get branch information for origin/master, cannot perform copyright check. Make sure that you have a remote called origin in your git project."
     CRC=$(($CRC + 1))
 fi
+
+exit $CRC

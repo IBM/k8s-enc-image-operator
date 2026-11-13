@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -37,6 +38,17 @@ import (
 )
 
 const testNamespace = "default"
+
+// staleKeyFile is the name of a key file synced from a secret that no longer
+// exists.
+var staleKeyFile = getLocalKeyFilename(testNamespace, "old-secret", "key", "0123456789abcdef0123456789abcdef")
+
+// legacyKeyFile returns the file name previous versions used for one entry of
+// a secret: <md5>-namespace-secretName-filename.
+func legacyKeyFile(secret, entry, content string) string {
+	hash := fmt.Sprintf("%x", md5.Sum([]byte(content))) // #nosec G401 Needed only to check if file exists
+	return fmt.Sprintf("%s-%s-%s-%s", hash, testNamespace, secret, entry)
+}
 
 // newTestClient returns a fake clientset that honours the "type=<secret
 // type>" field selector the server lists with. The stock fake client ignores
@@ -249,7 +261,7 @@ func TestKeySyncRemovesUntrackedFiles(t *testing.T) {
 	dir := t.TempDir()
 	client := newTestClient()
 
-	stale := filepath.Join(dir, "0123-default-old-secret-key")
+	stale := filepath.Join(dir, staleKeyFile)
 	if err := os.WriteFile(stale, []byte("old"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -261,6 +273,378 @@ func TestKeySyncRemovesUntrackedFiles(t *testing.T) {
 	expectFiles(t, dir, map[string]string{
 		keyFile("my-secret", "mykey", "this is a key"): "this is a key",
 	})
+}
+
+// TestKeySyncKeepsUnmanagedFiles checks that cleanup only removes key files
+// written by the server and stale temporary files, and leaves everything
+// else in the sync directory alone, e.g. when it is shared with keys
+// configured manually.
+func TestKeySyncKeepsUnmanagedFiles(t *testing.T) {
+	dir := t.TempDir()
+	client := newTestClient()
+
+	unmanaged := map[string]string{
+		"my-manual-key.pem":                 "manual",
+		"0123-default-old-secret-key":       "short hash",
+		"0123_default_old-secret_key":       "short hash",
+		strings.ToUpper(staleKeyFile):       "upper case hash",
+		staleKeyFile[:keyFileHashLen] + "_": "nothing after hash",
+		staleKeyFile[:keyFileHashLen] + "-": "nothing after hash (legacy)",
+		staleKeyFile[:keyFileHashLen] + ".": "other separator",
+		"x" + staleKeyFile:                  "prefixed",
+		".hidden":                           "hidden",
+	}
+	for name, content := range unmanaged {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, staleKeyFile), []byte("old"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, legacyKeyFile("old-secret", "key", "old")), []byte("old"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, tempFilePrefix+"123"), []byte("partial"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// A directory with a managed name is not removed either.
+	if err := os.Mkdir(filepath.Join(dir, keyFile("subdir", "k", "v")), 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	ks := newTestServer(client, dir, 0600)
+	createSecret(t, client, "my-secret", "key", map[string][]byte{"mykey": []byte("this is a key")})
+	ks.syncOnce()
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, e := range entries {
+		got[e.Name()] = true
+	}
+	want := map[string]bool{
+		keyFile("my-secret", "mykey", "this is a key"): true,
+		keyFile("subdir", "k", "v"):                    true,
+	}
+	for name := range unmanaged {
+		want[name] = true
+	}
+	if len(got) != len(want) {
+		t.Fatalf("expected files %v, got %v", want, got)
+	}
+	for name := range want {
+		if !got[name] {
+			t.Fatalf("expected file %q to exist, got %v", name, got)
+		}
+	}
+}
+
+// TestKeySyncNoTempFilesLeft checks that writing a key leaves no temporary
+// files behind.
+func TestKeySyncNoTempFilesLeft(t *testing.T) {
+	dir := t.TempDir()
+	client := newTestClient()
+	ks := newTestServer(client, dir, 0640)
+
+	createSecret(t, client, "my-secret", "key", map[string][]byte{
+		"a": []byte("key a"),
+		"b": []byte("key b"),
+	})
+	ks.syncOnce()
+	expectFiles(t, dir, map[string]string{
+		keyFile("my-secret", "a", "key a"): "key a",
+		keyFile("my-secret", "b", "key b"): "key b",
+	})
+}
+
+// TestKeySyncKeepsKeysWhenHandlerFails checks that a secret that still exists
+// but cannot be processed, e.g. because the unwrapping service is
+// unreachable, keeps its already-synced keys, while keys of deleted secrets
+// are still removed.
+func TestKeySyncKeepsKeysWhenHandlerFails(t *testing.T) {
+	dir := t.TempDir()
+	client := newTestClient()
+
+	var failHandler atomic.Bool
+	ks := newTestServer(client, dir, 0600)
+	ks.AddSecretKeyHandler("base64-key", func(data map[string][]byte) (map[string][]byte, error) {
+		if failHandler.Load() {
+			return nil, errors.New("unwrapping service unavailable")
+		}
+		return base64SecretHandler(data)
+	})
+
+	createSecret(t, client, "wrapped", "base64-key", map[string][]byte{
+		"a": []byte("a2V5IGE="), // "key a"
+		"b": []byte("a2V5IGI="), // "key b"
+	})
+	createSecret(t, client, "other", "base64-key", map[string][]byte{"k": []byte("a2V5IGM=")}) // "key c"
+	createSecret(t, client, "plain", "key", map[string][]byte{"k": []byte("plain key")})
+	ks.syncOnce()
+	all := map[string]string{
+		keyFile("wrapped", "a", "key a"):   "key a",
+		keyFile("wrapped", "b", "key b"):   "key b",
+		keyFile("other", "k", "key c"):     "key c",
+		keyFile("plain", "k", "plain key"): "plain key",
+	}
+	expectFiles(t, dir, all)
+
+	// While the handler fails the keys of existing secrets are kept, but
+	// deleted secrets are still revoked.
+	failHandler.Store(true)
+	deleteSecret(t, client, "other")
+	deleteSecret(t, client, "plain")
+	ks.syncOnce()
+	ks.syncOnce()
+	kept := map[string]string{
+		keyFile("wrapped", "a", "key a"): "key a",
+		keyFile("wrapped", "b", "key b"): "key b",
+	}
+	expectFiles(t, dir, kept)
+
+	// A restarted server keeps the keys from disk as well.
+	ks2 := newTestServer(client, dir, 0600)
+	ks2.AddSecretKeyHandler("base64-key", func(map[string][]byte) (map[string][]byte, error) {
+		return nil, errors.New("unwrapping service unavailable")
+	})
+	ks2.syncOnce()
+	expectFiles(t, dir, kept)
+
+	// Once the handler recovers, an updated secret replaces the old keys.
+	failHandler.Store(false)
+	updateSecret(t, client, "wrapped", "base64-key", map[string][]byte{"a": []byte("bmV3IGtleQ==")}) // "new key"
+	ks.syncOnce()
+	expectFiles(t, dir, map[string]string{
+		keyFile("wrapped", "a", "new key"): "new key",
+	})
+
+	// And a deleted one is removed.
+	deleteSecret(t, client, "wrapped")
+	ks.syncOnce()
+	expectFiles(t, dir, map[string]string{})
+}
+
+// TestKeySyncRemovesKeysOnPermanentHandlerError checks that the keys of a
+// secret are removed if its handler fails permanently, e.g. because access
+// was revoked in the unwrapping service, while transient failures of other
+// secrets still keep their keys.
+func TestKeySyncRemovesKeysOnPermanentHandlerError(t *testing.T) {
+	dir := t.TempDir()
+	client := newTestClient()
+
+	var revoked, unavailable atomic.Bool
+	ks := newTestServer(client, dir, 0600)
+	ks.AddSecretKeyHandler("base64-key", func(data map[string][]byte) (map[string][]byte, error) {
+		switch {
+		case revoked.Load() && string(data["revocable"]) == "true":
+			return nil, sechandlers.NewPermanentError(errors.New("access denied"))
+		case unavailable.Load():
+			return nil, errors.New("unwrapping service unavailable")
+		}
+		delete(data, "revocable")
+		return base64SecretHandler(data)
+	})
+
+	createSecret(t, client, "revoked", "base64-key", map[string][]byte{
+		"a":         []byte("a2V5IGE="), // "key a"
+		"revocable": []byte("true"),
+	})
+	createSecret(t, client, "unavailable", "base64-key", map[string][]byte{"k": []byte("a2V5IGM=")}) // "key c"
+	ks.syncOnce()
+	expectFiles(t, dir, map[string]string{
+		keyFile("revoked", "a", "key a"):     "key a",
+		keyFile("unavailable", "k", "key c"): "key c",
+	})
+
+	revoked.Store(true)
+	unavailable.Store(true)
+	ks.syncOnce()
+	expectFiles(t, dir, map[string]string{
+		keyFile("unavailable", "k", "key c"): "key c",
+	})
+
+	// The keys are synced again once access is restored.
+	revoked.Store(false)
+	unavailable.Store(false)
+	ks.syncOnce()
+	expectFiles(t, dir, map[string]string{
+		keyFile("revoked", "a", "key a"):     "key a",
+		keyFile("unavailable", "k", "key c"): "key c",
+	})
+}
+
+// TestExistingKeyFiles checks which files are attributed to a secret when its
+// handler fails.
+func TestExistingKeyFiles(t *testing.T) {
+	dir := t.TempDir()
+	ks := newTestServer(newTestClient(), dir, 0600)
+
+	want := []string{
+		keyFile("foo", "k", "1"),
+		keyFile("foo", "k-2", "2"),
+		keyFile("foo", "k_3", "3"),        // entries may contain the separator
+		keyFile("foo", "bar_k", "4"),      // and look like a secret name
+		keyFile("foo", "-bar-k.pem", "5"), // or dashes
+	}
+	others := []string{
+		keyFile("foo-bar", "k", "6"), // another secret starting with foo
+		keyFile("foo.bar", "k", "7"),
+		keyFile("fo", "k", "8"),
+		keyFile("fo", "o_k", "9"),
+		keyFile("bar", "k", "10"),
+		getLocalKeyFilename("other-ns", "foo", "k", strings.Repeat("0", keyFileHashLen)),
+		getLocalKeyFilename(testNamespace+"-foo", "k", "x", strings.Repeat("0", keyFileHashLen)),
+		legacyKeyFile("foo", "k", "11"), // ambiguous, never kept
+		"my_default_foo_key",
+	}
+	for _, name := range append(append([]string{}, want...), others...) {
+		if err := os.WriteFile(filepath.Join(dir, name), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got := map[string]bool{}
+	for _, f := range ks.existingKeyFiles(testNamespace, "foo") {
+		got[f] = true
+	}
+	if len(got) != len(want) {
+		t.Fatalf("expected %v, got %v", want, got)
+	}
+	for _, f := range want {
+		if !got[f] {
+			t.Fatalf("expected %q in %v", f, got)
+		}
+	}
+
+	if got := ks.existingKeyFiles(testNamespace, "missing"); len(got) != 0 {
+		t.Fatalf("expected no files, got %v", got)
+	}
+
+	ks.keySyncDir = filepath.Join(dir, "does-not-exist")
+	if got := ks.existingKeyFiles(testNamespace, "foo"); len(got) != 0 {
+		t.Fatalf("expected no files, got %v", got)
+	}
+}
+
+// TestKeySyncNameOverlap checks that the keys of a deleted or revoked secret
+// are removed although a secret whose name is a prefix of its name fails
+// transiently and keeps its own keys.
+func TestKeySyncNameOverlap(t *testing.T) {
+	dir := t.TempDir()
+	client := newTestClient()
+
+	var failing atomic.Bool
+	ks := newTestServer(client, dir, 0600)
+	ks.AddSecretKeyHandler("base64-key", func(data map[string][]byte) (map[string][]byte, error) {
+		if failing.Load() {
+			if string(data["revoked"]) == "true" {
+				return nil, sechandlers.NewPermanentError(errors.New("access denied"))
+			}
+			return nil, errors.New("unwrapping service unavailable")
+		}
+		delete(data, "revoked")
+		return base64SecretHandler(data)
+	})
+
+	// The entries of foo-bar would be entries "bar-k" of foo in the legacy
+	// format.
+	createSecret(t, client, "foo", "base64-key", map[string][]byte{"k": []byte("a2V5IGE=")})     // "key a"
+	createSecret(t, client, "foo-bar", "base64-key", map[string][]byte{"k": []byte("a2V5IGI=")}) // "key b"
+	createSecret(t, client, "foo-baz", "base64-key", map[string][]byte{"k": []byte("a2V5IGM="),  // "key c"
+		"revoked": []byte("true")})
+	ks.syncOnce()
+	expectFiles(t, dir, map[string]string{
+		keyFile("foo", "k", "key a"):     "key a",
+		keyFile("foo-bar", "k", "key b"): "key b",
+		keyFile("foo-baz", "k", "key c"): "key c",
+	})
+
+	failing.Store(true)
+	deleteSecret(t, client, "foo-bar")
+	ks.syncOnce()
+	expectFiles(t, dir, map[string]string{
+		keyFile("foo", "k", "key a"): "key a",
+	})
+}
+
+// TestKeySyncLegacyKeyFiles checks that key files in the format of previous
+// versions are replaced by the current format, and never kept for a failing
+// secret since the secret they belong to is ambiguous.
+func TestKeySyncLegacyKeyFiles(t *testing.T) {
+	dir := t.TempDir()
+	client := newTestClient()
+
+	ks := newTestServer(client, dir, 0600)
+	ks.AddSecretKeyHandler("base64-key", func(map[string][]byte) (map[string][]byte, error) {
+		return nil, errors.New("unwrapping service unavailable")
+	})
+
+	createSecret(t, client, "plain", "key", map[string][]byte{"k": []byte("plain key")})
+	createSecret(t, client, "wrapped", "base64-key", map[string][]byte{"k": []byte("a2V5IGE=")}) // "key a"
+	for name, content := range map[string]string{
+		legacyKeyFile("plain", "k", "plain key"): "plain key",
+		legacyKeyFile("wrapped", "k", "key a"):   "key a",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ks.syncOnce()
+	expectFiles(t, dir, map[string]string{
+		keyFile("plain", "k", "plain key"): "plain key",
+	})
+}
+
+// TestKeySyncSkipsInvalidNames checks that secrets whose namespace or name
+// contain the key file name separator are not synced, as their key files
+// could be attributed to another secret. The API server rejects such names.
+func TestKeySyncSkipsInvalidNames(t *testing.T) {
+	dir := t.TempDir()
+	client := newTestClient()
+	ks := newTestServer(client, dir, 0600)
+
+	createSecret(t, client, "foo_bar", "key", map[string][]byte{"k": []byte("invalid")})
+	createSecret(t, client, "valid", "key", map[string][]byte{"k": []byte("valid")})
+	ks.syncOnce()
+	expectFiles(t, dir, map[string]string{
+		keyFile("valid", "k", "valid"): "valid",
+	})
+
+	got := ks.syncSecretsToLocalKeys(&corev1.SecretList{Items: []corev1.Secret{{
+		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "my_ns"},
+		Data:       map[string][]byte{"k": []byte("invalid")},
+	}}}, sechandlers.RegularKeyHandler)
+	if len(got) != 0 {
+		t.Fatalf("expected no key files, got %v", got)
+	}
+	expectFiles(t, dir, map[string]string{
+		keyFile("valid", "k", "valid"): "valid",
+	})
+}
+
+// TestStartSyncsImmediately checks that the first sync does not wait for the
+// interval.
+func TestStartSyncsImmediately(t *testing.T) {
+	dir := t.TempDir()
+	client := newTestClient()
+	ks := newTestServer(client, dir, 0600) // interval of one hour
+	createSecret(t, client, "my-secret", "key", map[string][]byte{"mykey": []byte("this is a key")})
+
+	// Start never returns, the goroutine is left waiting for the interval.
+	go func() { _ = ks.Start() }()
+
+	path := filepath.Join(dir, keyFile("my-secret", "mykey", "this is a key"))
+	deadline := time.Now().Add(10 * time.Second)
+	for !fileExists(path) {
+		if time.Now().After(deadline) {
+			t.Fatal("key was not synced on start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // TestKeySyncHandlerError checks that a secret the handler cannot process is
@@ -591,7 +975,7 @@ func TestKeySyncUnwritableDir(t *testing.T) {
 	dir := t.TempDir()
 	client := newTestClient()
 
-	stale := filepath.Join(dir, "0123-default-old-secret-key")
+	stale := filepath.Join(dir, staleKeyFile)
 	if err := os.WriteFile(stale, []byte("old"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -603,7 +987,7 @@ func TestKeySyncUnwritableDir(t *testing.T) {
 	ks := newTestServer(client, dir, 0600)
 	createSecret(t, client, "my-secret", "key", map[string][]byte{"mykey": []byte("this is a key")})
 	ks.syncOnce()
-	expectFiles(t, dir, map[string]string{"0123-default-old-secret-key": "old"})
+	expectFiles(t, dir, map[string]string{staleKeyFile: "old"})
 
 	if err := os.Chmod(dir, 0700); err != nil {
 		t.Fatal(err)

@@ -280,7 +280,7 @@ func TestHandleSecretIAMErrors(t *testing.T) {
 				})
 			}))
 			t.Cleanup(iam.Close)
-			unwrap := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			unwrap := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 				t.Error("unexpected unwrap request without a token")
 			}))
 			t.Cleanup(unwrap.Close)

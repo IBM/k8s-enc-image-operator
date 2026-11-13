@@ -12,11 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package sechandlers implements the secret key handler unwrapping keys with
+// IBM Key Protect (type=kp-key secrets).
 package sechandlers
 
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -24,7 +27,6 @@ import (
 	core "github.com/IBM/go-sdk-core/v5/core"
 	kp "github.com/IBM/keyprotect-go-client/ibmkeyprotectapiv2"
 	"github.com/lumjjb/k8s-enc-image-operator/keysync/sechandlers"
-	"github.com/pkg/errors"
 )
 
 type keyprotectSecretKeyHandler struct {
@@ -97,13 +99,13 @@ func isPermanentStatus(statusCode int) bool {
 }
 
 // NewKeyprotectSecretKeyHandler returns a secret handler for keyprotect given the keyprotect configuration
-func NewKeyprotectSecretKeyHandler(kpUrl, instanceid, apikey string) (sechandlers.SecretKeyHandler, error) {
+func NewKeyprotectSecretKeyHandler(kpURL, instanceid, apikey string) (sechandlers.SecretKeyHandler, error) {
 	auth := &core.IamAuthenticator{
 		ApiKey: apikey,
 	}
 
 	kpClient, err := kp.NewIbmKeyProtectApiV2(&kp.IbmKeyProtectApiV2Options{
-		URL:           kpUrl,
+		URL:           kpURL,
 		Authenticator: auth,
 	})
 	if err != nil {
@@ -115,7 +117,5 @@ func NewKeyprotectSecretKeyHandler(kpUrl, instanceid, apikey string) (sechandler
 		instanceID: instanceid,
 	}
 
-	return func(data map[string][]byte) (map[string][]byte, error) {
-		return kpskh.handleSecret(data)
-	}, nil
+	return kpskh.handleSecret, nil
 }

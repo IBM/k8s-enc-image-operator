@@ -49,3 +49,32 @@ jobs:
       run: |
         export PATH=$PATH:/usr/local/go/bin/
         make check
+
+  e2e-helm:
+    name: E2E Helm
+    runs-on: ubuntu-latest
+    env:
+      KIND_CLUSTER_NAME: e2e
+    steps:
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v7
+
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version: '1.27'
+        check-latest: true
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v5.0.1
+      with:
+        version: v4.3.1
+
+    - name: Create kind cluster
+      uses: helm/kind-action@v1.15.1
+      with:
+        version: v0.33.0
+        cluster_name: ${{ env.KIND_CLUSTER_NAME }}
+
+    - name: Run helm e2e test
+      run: make e2e-helm

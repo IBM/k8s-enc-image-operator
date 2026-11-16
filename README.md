@@ -130,3 +130,18 @@ $ kubectl run enc-workload --image=docker.io/lumjjb/sample-enc-app
 # Developing 
 
 We are using golang 1.19.12 or later, expect problems with earlier releases.
+
+## End-to-end tests
+
+The helm installation is tested end-to-end on a [kind](https://kind.sigs.k8s.io/)
+cluster (this also runs in CI):
+
+```
+$ make e2e-helm
+```
+
+This builds the keysync image from source, installs the helm chart, and checks
+that keys from `type=key` secrets are synced to (and removed from) the nodes.
+It uses the `kind` cluster if it exists, or creates and deletes one otherwise.
+See [scripts/e2e-helm.sh](scripts/e2e-helm.sh) for the supported environment
+variables (e.g. `CONTAINER_TOOL=podman`, `KIND_CLUSTER_NAME`).

@@ -1,4 +1,4 @@
-.PHONY: vendor check all build fmt copyright clean operator operator-push operator-bundle FORCE
+.PHONY: vendor check all build fmt copyright clean operator operator-push operator-bundle e2e-helm FORCE
 
 all: build
 
@@ -46,6 +46,10 @@ vendor:
 
 test:
 	go test ./...
+
+# End-to-end test of the helm chart on a kind cluster, see scripts/e2e-helm.sh
+e2e-helm:
+	scripts/e2e-helm.sh
 
 clean:
 	rm -rf bin/

@@ -116,24 +116,11 @@ func main() {
 		}
 		ks.AddSecretKeyHandler("kp-key", kpskh)
 	} else if inputFlags.keyprotectConfigKubeSecret != "" {
-		go keyprotectConfigKubeSecretThread(clientset, namespace, inputFlags.keyprotectConfigKubeSecret, ks.AddSecretKeyHandler, interval)
-		/*
-			secClient := clientset.CoreV1().Secrets(namespace)
-			s, err := secClient.Get(inputFlags.keyprotectConfigKubeSecret, metav1.GetOptions{})
-			if err != nil {
-				panic(err)
-			}
-			if s.Data != nil {
-				d := s.Data["config.json"]
-				if len(d) > 0 {
-					kpskh, err := keyprotect.GetSecKeyHandlerFromConfig(d)
-					if err != nil {
-						panic(err)
-					}
-					ks.AddSecretKeyHandler("kp-key", kpskh)
-				}
-			}
-		*/
+		// Register the handler before the first sync, which happens right
+		// away. Otherwise there would be no handler for the keyprotect
+		// keys synced by a previous run yet, and they would be cleaned up.
+		configData := syncKeyprotectConfig(clientset, namespace, inputFlags.keyprotectConfigKubeSecret, ks.AddSecretKeyHandler, "")
+		go keyprotectConfigKubeSecretThread(clientset, namespace, inputFlags.keyprotectConfigKubeSecret, ks.AddSecretKeyHandler, interval, configData)
 	}
 
 	slog.Info("Starting KeySync server",
@@ -193,11 +180,12 @@ func parseInterval(seconds uint) (time.Duration, error) {
 
 // keyprotectConfigKubeSecretThread is a helper function that tries to retrieve the kube secret containing the
 // keyprotect config and add the handler to the key sync server. Meant to run as a thread.
-func keyprotectConfigKubeSecretThread(clientset kubernetes.Interface, namespace string, secretName string, addHandler addSecretKeyHandlerFunc, interval time.Duration) {
-	oldData := ""
+// oldData is the config already applied by the caller, the first check is
+// done after one interval.
+func keyprotectConfigKubeSecretThread(clientset kubernetes.Interface, namespace string, secretName string, addHandler addSecretKeyHandlerFunc, interval time.Duration, oldData string) {
 	for {
-		oldData = syncKeyprotectConfig(clientset, namespace, secretName, addHandler, oldData)
 		<-time.After(interval)
+		oldData = syncKeyprotectConfig(clientset, namespace, secretName, addHandler, oldData)
 	}
 }
 

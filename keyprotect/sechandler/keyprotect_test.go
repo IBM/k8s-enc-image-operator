@@ -24,6 +24,7 @@ import (
 
 	core "github.com/IBM/go-sdk-core/v5/core"
 	kp "github.com/IBM/keyprotect-go-client/ibmkeyprotectapiv2"
+	"github.com/lumjjb/k8s-enc-image-operator/keysync/sechandlers"
 )
 
 const (
@@ -105,35 +106,100 @@ func TestHandleSecret(t *testing.T) {
 	}
 }
 
+// kpError responds with a Key Protect error with the given status code.
+func kpError(status int, msg string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		respond(w, status, map[string]any{
+			"metadata":  map[string]any{"collectionType": "application/vnd.ibm.kms.error+json", "collectionTotal": 1},
+			"resources": []map[string]string{{"errorMsg": msg}},
+		})
+	}
+}
+
 func TestHandleSecretErrors(t *testing.T) {
 	ok := func(w http.ResponseWriter, _ *http.Request) {
 		respond(w, http.StatusOK, map[string]string{"plaintext": base64.StdEncoding.EncodeToString([]byte("key"))})
 	}
 
 	tests := []struct {
-		name   string
-		data   map[string][]byte
-		handle http.HandlerFunc
+		name      string
+		data      map[string][]byte
+		handle    http.HandlerFunc
+		permanent bool
 	}{
 		{
-			name:   "missing rootkeyid",
-			data:   map[string][]byte{"ciphertext": []byte(testCiphertext)},
-			handle: ok,
+			name:      "missing rootkeyid",
+			data:      map[string][]byte{"ciphertext": []byte(testCiphertext)},
+			handle:    ok,
+			permanent: true,
 		},
 		{
-			name:   "missing ciphertext",
-			data:   map[string][]byte{"rootkeyid": []byte(testRootKeyID)},
-			handle: ok,
+			name:      "missing ciphertext",
+			data:      map[string][]byte{"rootkeyid": []byte(testRootKeyID)},
+			handle:    ok,
+			permanent: true,
 		},
 		{
-			name: "unwrap fails",
-			data: validSecret(),
-			handle: func(w http.ResponseWriter, _ *http.Request) {
-				respond(w, http.StatusNotFound, map[string]any{
-					"metadata":  map[string]any{"collectionType": "application/vnd.ibm.kms.error+json", "collectionTotal": 1},
-					"resources": []map[string]string{{"errorMsg": "Not Found: Key could not be found"}},
-				})
-			},
+			name:      "invalid ciphertext",
+			data:      validSecret(),
+			handle:    kpError(http.StatusBadRequest, "Bad Request: The ciphertext provided for the unwrap operation was not wrapped by this key"),
+			permanent: true,
+		},
+		{
+			name:      "unauthorized",
+			data:      validSecret(),
+			handle:    kpError(http.StatusUnauthorized, "Unauthorized: The user does not have access to the specified resource"),
+			permanent: true,
+		},
+		{
+			name:      "forbidden",
+			data:      validSecret(),
+			handle:    kpError(http.StatusForbidden, "Forbidden: The user does not have access to the specified resource"),
+			permanent: true,
+		},
+		{
+			name:      "root key not found",
+			data:      validSecret(),
+			handle:    kpError(http.StatusNotFound, "Not Found: Key could not be found"),
+			permanent: true,
+		},
+		{
+			name:      "root key disabled",
+			data:      validSecret(),
+			handle:    kpError(http.StatusConflict, "Conflict: Key is disabled"),
+			permanent: true,
+		},
+		{
+			name:      "root key destroyed",
+			data:      validSecret(),
+			handle:    kpError(http.StatusGone, "Gone: Key has been deleted"),
+			permanent: true,
+		},
+		{
+			name:      "ciphertext not matching",
+			data:      validSecret(),
+			handle:    kpError(http.StatusUnprocessableEntity, "Unprocessable Entity: The ciphertext is invalid"),
+			permanent: true,
+		},
+		{
+			name:   "request timeout",
+			data:   validSecret(),
+			handle: kpError(http.StatusRequestTimeout, "Request Timeout"),
+		},
+		{
+			name:   "rate limited",
+			data:   validSecret(),
+			handle: kpError(http.StatusTooManyRequests, "Too Many Requests"),
+		},
+		{
+			name:   "server error",
+			data:   validSecret(),
+			handle: kpError(http.StatusInternalServerError, "Internal Server Error"),
+		},
+		{
+			name:   "service unavailable",
+			data:   validSecret(),
+			handle: kpError(http.StatusServiceUnavailable, "Service Unavailable"),
 		},
 		{
 			name: "no plaintext in response",
@@ -157,6 +223,84 @@ func TestHandleSecretErrors(t *testing.T) {
 			got, err := skh.handleSecret(tt.data)
 			if err == nil {
 				t.Fatalf("expected an error, got %q", got)
+			}
+			if p := sechandlers.IsPermanent(err); p != tt.permanent {
+				t.Fatalf("expected permanent %v, got %v for error: %v", tt.permanent, p, err)
+			}
+		})
+	}
+}
+
+// TestHandleSecretUnreachable checks that failing to reach Key Protect is a
+// transient error.
+func TestHandleSecretUnreachable(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	url := srv.URL
+	srv.Close()
+
+	client, err := kp.NewIbmKeyProtectApiV2(&kp.IbmKeyProtectApiV2Options{
+		URL:           url,
+		Authenticator: &core.NoAuthAuthenticator{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.Service.DisableRetries()
+	skh := &keyprotectSecretKeyHandler{kpClient: client, instanceID: testInstanceID}
+
+	_, err = skh.handleSecret(validSecret())
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if sechandlers.IsPermanent(err) {
+		t.Fatalf("expected a transient error, got permanent: %v", err)
+	}
+}
+
+// TestHandleSecretIAMErrors checks that errors getting an IAM token are
+// classified by their status code as well, e.g. a deleted API key is a
+// permanent error.
+func TestHandleSecretIAMErrors(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    int
+		permanent bool
+	}{
+		{name: "api key not found", status: http.StatusBadRequest, permanent: true},
+		{name: "rate limited", status: http.StatusTooManyRequests},
+		{name: "server error", status: http.StatusServiceUnavailable},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				respond(w, tt.status, map[string]any{
+					"errorCode":    "BXNIM0415E",
+					"errorMessage": "Provided API key could not be found.",
+				})
+			}))
+			t.Cleanup(iam.Close)
+			unwrap := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				t.Error("unexpected unwrap request without a token")
+			}))
+			t.Cleanup(unwrap.Close)
+
+			client, err := kp.NewIbmKeyProtectApiV2(&kp.IbmKeyProtectApiV2Options{
+				URL:           unwrap.URL,
+				Authenticator: &core.IamAuthenticator{ApiKey: "apikey", URL: iam.URL},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			client.Service.DisableRetries()
+			skh := &keyprotectSecretKeyHandler{kpClient: client, instanceID: testInstanceID}
+
+			_, err = skh.handleSecret(validSecret())
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if p := sechandlers.IsPermanent(err); p != tt.permanent {
+				t.Fatalf("expected permanent %v, got %v for error: %v", tt.permanent, p, err)
 			}
 		})
 	}

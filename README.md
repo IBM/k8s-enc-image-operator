@@ -58,14 +58,42 @@ $ helm install --namespace=enc-key-sync k8s-enc-image-operator ./helm-operator/h
 ## If deploying for containerd:
 
 Deploy the operator on the cluster with `helm`, and change the value of the keys
-directory to the directory or subdirectory of the containerd configuration. For
-example, if the keys directory is set to `/path/to/keys`, then the value of 
-`keysDir` can be set to `/path/to/keys` or `/path/to/keys/subfolder`.
+directory to a dedicated subdirectory of the keys directory of the containerd
+configuration. For example, if the keys directory is set to `/path/to/keys`,
+then the value of `keysDir` can be set to `/path/to/keys/enc-key-sync`.
 
 ```
 $ kubectl create namespace enc-key-sync
-$ helm install --namespace=enc-key-sync --set keysDir=/path/to/keys k8s-enc-image-operator ./helm-operator/helm-charts/enckeysync/
+$ helm install --namespace=enc-key-sync --set keysDir=/path/to/keys/enc-key-sync k8s-enc-image-operator ./helm-operator/helm-charts/enckeysync/
 ```
+
+</details>
+
+## The keys directory
+
+The operator owns the key files it writes to `keysDir`, and removes them once
+the corresponding secrets are deleted. Key files of a secret whose processing
+fails temporarily (e.g. the unwrapping service is unreachable) are kept, see
+[KEYPROTECT.md](KEYPROTECT.md#revoking-access-and-key-protect-failures) for
+Key Protect. Use a directory dedicated to the
+operator: while other files in it are not removed, keys from other sources
+are best kept elsewhere.
+
+<details>
+<summary>Key file names</summary>
+
+Key files are named `<md5 of the key>_<namespace>_<secret name>_<secret entry>`.
+Namespace and secret names cannot contain underscores, so every key file
+belongs to exactly one secret. Only files following this format, and temporary
+files starting with `.keysync-tmp-` left behind by an interrupted write, are
+removed by the operator.
+
+Previous versions named key files
+`<md5 of the key>-<namespace>-<secret name>-<secret entry>`. Such files are
+removed and written again in the current format by the first sync after an
+upgrade. As the secret they belong to is ambiguous, they are not kept for a
+secret whose processing fails temporarily, so upgrade while the unwrapping
+service is reachable to avoid failing image pulls.
 
 </details>
 

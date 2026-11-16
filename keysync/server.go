@@ -22,6 +22,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -35,6 +37,34 @@ import (
 
 const (
 	keyTypeFieldSelectorPrefix = "type="
+
+	// keyFileHashLen is the length of the hex encoded hash that key file
+	// names start with, see getLocalKeyFilename.
+	keyFileHashLen = 2 * md5.Size
+
+	// tempFilePrefix is the name prefix of the temporary files key files are
+	// written to before being renamed into place.
+	tempFilePrefix = ".keysync-tmp-"
+
+	// keyFileSep separates the parts of key file names, see
+	// getLocalKeyFilename. Namespace and secret names cannot contain it, so
+	// the secret a key file was synced from is unambiguous.
+	keyFileSep = "_"
+)
+
+var (
+	// managedKeyFileRe matches the names of key files written by the server,
+	// see getLocalKeyFilename. Only such files are removed during cleanup, so
+	// that other files in the sync directory are left alone.
+	managedKeyFileRe = regexp.MustCompile(fmt.Sprintf(`^[0-9a-f]{%d}%s.`, keyFileHashLen, keyFileSep))
+
+	// legacyKeyFileRe matches the names of key files written by previous
+	// versions, in the format <md5>-namespace-secretName-filename. As secret
+	// and entry names may contain dashes, the secret such a file was synced
+	// from is ambiguous. They are removed during cleanup and never kept for a
+	// secret whose handler fails, since the files of another (deleted or
+	// revoked) secret could be kept that way.
+	legacyKeyFileRe = regexp.MustCompile(fmt.Sprintf(`^[0-9a-f]{%d}-.`, keyFileHashLen))
 )
 
 // KeySyncServerConfig contains the parameters required for operation of the
@@ -130,10 +160,11 @@ func NewKeySyncServer(ksc KeySyncServerConfig) *KeySyncServer {
 // Start begins running the KeySyncServer according to the parameters
 // specified.
 // Only one instance of Start should be run per KeySyncServer
+// The first sync is done immediately, then once every interval.
 func (ks *KeySyncServer) Start() error {
 	for {
-		<-time.After(ks.interval)
 		ks.syncOnce()
+		<-time.After(ks.interval)
 	}
 }
 
@@ -225,10 +256,37 @@ func (ks *KeySyncServer) syncSecretsToLocalKeys(secList *corev1.SecretList, skh 
 
 		name := s.GetName()
 
+		// The API server does not allow the separator in namespace and secret
+		// names. Should it appear anyway, the key files would be attributed
+		// to the wrong secret, so the secret is not synced at all.
+		if strings.Contains(namespace, keyFileSep) || strings.Contains(name, keyFileSep) {
+			slog.Error("Unable to process secret, invalid namespace or name",
+				"namespace", namespace, "secret", name)
+			continue
+		}
+
 		// Process the secrets to filename/priv key map
 		keyFiles, err := skh(s.Data)
 		if err != nil {
-			slog.Error("Unable to process secret", "secret", name, "error", err)
+			// A permanent error, e.g. access to the unwrapping service being
+			// revoked, means the keys should no longer be on the node, so
+			// they are removed by the cleanup.
+			if sechandlers.IsPermanent(err) {
+				slog.Error("Unable to process secret, removing its existing key files",
+					"secret", name, "error", err)
+				continue
+			}
+
+			// The secret still exists, so keep the key files synced from it
+			// before. Otherwise a transient failure of the handler (e.g. an
+			// unreachable unwrapping service) would remove the keys from
+			// disk and break image pulls until it recovers.
+			kept := ks.existingKeyFiles(namespace, name)
+			slog.Error("Unable to process secret, keeping its existing key files",
+				"secret", name, "error", err, "keptFiles", len(kept))
+			for _, f := range kept {
+				filenameMap[f] = true
+			}
 			continue
 		}
 
@@ -267,37 +325,102 @@ func (ks *KeySyncServer) cleanupKeys(filenameMap map[string]bool) {
 		slog.Error("Unable to list directory for cleanup", "dir", ks.keySyncDir, "error", err)
 	}
 
-	// Remove all files that are not tracked based on filename map
-	// from above
+	// Remove all key files that are not tracked based on filename map
+	// from above, as well as temporary files left behind by an interrupted
+	// write. Other files are not touched, the sync directory might be shared
+	// with keys not managed by us.
 	for _, file := range files {
 		filename := file.Name()
-		if !filenameMap[filename] {
-			path := filepath.Join(ks.keySyncDir, filename)
+		if !file.Type().IsRegular() || filenameMap[filename] {
+			continue
+		}
+		path := filepath.Join(ks.keySyncDir, filename)
+		switch {
+		case isManagedKeyFile(filename):
 			slog.Info("Deleting old key", "filename", filename)
-			if err = os.Remove(path); err != nil {
-				slog.Error("Unable to delete old key", "path", path, "error", err)
-			}
+		case strings.HasPrefix(filename, tempFilePrefix):
+			slog.Info("Deleting stale temporary file", "filename", filename)
+		default:
+			continue
+		}
+		if err = os.Remove(path); err != nil {
+			slog.Error("Unable to delete file", "path", path, "error", err)
 		}
 	}
 }
 
-// writeKeyFile writes key into the specified file
-// and makes sure that the file has the specified
-// permissions and ownership. If that fails, the file is removed so that the
-// next sync retries instead of treating the key as already synced.
-func (ks *KeySyncServer) writeKeyFile(filepath string, data []byte) error {
-	// Writing data into the specified file
-	err := os.WriteFile(filepath, data, ks.keyFilePermissions)
+// existingKeyFiles returns the names of the key files in the sync directory
+// that were synced from the given secret. Key files in the legacy format are
+// not returned, see legacyKeyFileRe.
+func (ks *KeySyncServer) existingKeyFiles(namespace, name string) []string {
+	files, err := os.ReadDir(ks.keySyncDir)
+	if err != nil {
+		// Cleanup is not able to list the directory either, so nothing
+		// gets removed.
+		return nil
+	}
+
+	suffixPrefix := keyFileSep + namespace + keyFileSep + name + keyFileSep
+	var existing []string
+	for _, file := range files {
+		filename := file.Name()
+		if file.Type().IsRegular() && managedKeyFileRe.MatchString(filename) &&
+			strings.HasPrefix(filename[keyFileHashLen:], suffixPrefix) {
+			existing = append(existing, filename)
+		}
+	}
+	return existing
+}
+
+// isManagedKeyFile returns true if filename is the name of a key file written
+// by the server, in the current or the legacy format.
+func isManagedKeyFile(filename string) bool {
+	return managedKeyFileRe.MatchString(filename) || legacyKeyFileRe.MatchString(filename)
+}
+
+// writeKeyFile atomically writes key into the specified file with the
+// configured permissions and ownership: the data is written to a temporary
+// file in the same directory, which is renamed into place once complete.
+// This way the container runtime never sees a partially written key, and an
+// interrupted write does not leave a truncated key file behind that later
+// syncs would treat as already synced.
+func (ks *KeySyncServer) writeKeyFile(path string, data []byte) error {
+	// CreateTemp creates the file with 0600 permissions, so the key is not
+	// readable by others while being written.
+	f, err := os.CreateTemp(filepath.Dir(path), tempFilePrefix+"*")
+	if err != nil {
+		return err
+	}
+	tmpPath := f.Name()
+	renamed := false
+	defer func() {
+		if renamed {
+			return
+		}
+		if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
+			slog.Error("Unable to remove temporary file", "path", tmpPath, "error", err)
+		}
+	}()
+
+	_, err = f.Write(data)
+	if err == nil {
+		err = f.Sync()
+	}
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
 	if err != nil {
 		return err
 	}
 
-	if err := ks.setKeyFileAttributes(filepath); err != nil {
-		if rmErr := os.Remove(filepath); rmErr != nil {
-			slog.Error("Unable to remove key file", "path", filepath, "error", rmErr)
-		}
+	if err := ks.setKeyFileAttributes(tmpPath); err != nil {
 		return err
 	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	renamed = true
 
 	return nil
 }
@@ -344,10 +467,15 @@ func (ks *KeySyncServer) setKeyFileAttributes(filepath string) error {
 }
 
 // getLocalKeyFilename returns the local filename to use, format is
-// <md5>-namespace-secretName-filename
-// i.e. a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447-default-mysecret-a.pem
+// <md5>_namespace_secretName_filename
+// i.e. 9e107d9d372bb6826bd81d3542a419d6_default_mysecret_a.pem
+// Cleanup relies on this format (see managedKeyFileRe) to tell key files
+// written by the server apart from other files in the sync directory.
+// Namespace and secret names cannot contain underscores (unlike the filename,
+// which comes last), so the secret a key file belongs to is unambiguous, see
+// existingKeyFiles.
 func getLocalKeyFilename(namespace, name, filename, hashString string) string {
-	return fmt.Sprintf("%s-%s-%s-%s", hashString, namespace, name, filename)
+	return strings.Join([]string{hashString, namespace, name, filename}, keyFileSep)
 }
 
 // fileExists returns true if the file exists

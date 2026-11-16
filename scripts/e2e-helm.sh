@@ -38,7 +38,13 @@
 #      (and that secrets of other types are ignored)
 #   7. checks that a pod using the encrypted image now runs
 #   8. deletes the secret and checks that the key file is removed
-#   9. uninstalls the chart
+#   9. enables the keyprotect handler and checks the cleanup of the keys
+#      directory: stale key files (also in the legacy name format) and
+#      temporary files are removed, other files are kept, and so are the key
+#      files of a secret whose handler fails transiently (also across a
+#      restart of the key sync pods) until the secret is deleted, but not
+#      those of a secret whose handler fails permanently
+#  10. uninstalls the chart
 #
 # The cluster is created if it does not exist yet (and deleted at the end in
 # that case, unless KEEP_CLUSTER=true). An existing cluster must have been
@@ -82,6 +88,9 @@ DAEMONSET=enc-key-sync
 KEY_SECRET=e2e-decryption-key
 KEY_FILE=e2e-priv-key.pem
 OTHER_SECRET=e2e-not-a-key
+KP_CONFIG_SECRET=e2e-keyprotect-config
+KP_SECRET=e2e-wrapped-key
+KP_INVALID_SECRET=e2e-invalid-wrapped-key
 REGISTRY_NAME="${CLUSTER_NAME}-registry"
 REGISTRY="${REGISTRY_NAME}:5000"
 
@@ -341,6 +350,46 @@ on_all_nodes() {
     done
 }
 
+# Name of a key file as synced by the key sync server:
+# <md5 of content>_<namespace>_<secret>_<entry>
+synced_key_name() {
+    local secret=$1 entry=$2 content=$3
+    printf '%s_%s_%s_%s' \
+        "$(printf '%s' "${content}" | openssl dgst -md5 -r | cut -d' ' -f1)" \
+        "${NAMESPACE}" "${secret}" "${entry}"
+}
+
+# Creates a file with the given content in the keys directory on all nodes.
+create_on_all_nodes() {
+    local name=$1 content=$2
+    # shellcheck disable=SC2016 # expanded by the shell on the node
+    on_all_nodes sh -c 'printf "%s" "$2" > "$1"' sh "${KEYS_DIR}/${name}" "${content}"
+}
+
+# Waits until the key sync pods completed a full sync (including cleanup)
+# that started after this function was called: a stale key file is created,
+# and once cleanup removed it, the same is done again. The second sync started
+# after the first marker was removed, i.e. after all prior changes.
+wait_for_sync() {
+    local marker i
+    marker=$(synced_key_name e2e-sync-marker key "${RANDOM}")
+    for i in 1 2; do
+        create_on_all_nodes "${marker}" "marker ${i}"
+        wait_until "a sync of the key sync pods (${i}/2)" \
+            on_all_nodes test ! -e "${KEYS_DIR}/${marker}"
+    done
+}
+
+# Fails unless the file exists in the keys directory on all nodes.
+expect_on_all_nodes() {
+    on_all_nodes test -f "${KEYS_DIR}/$1" || fail "$2"
+}
+
+# Fails if the file exists in the keys directory on any node.
+expect_on_no_node() {
+    on_all_nodes test ! -e "${KEYS_DIR}/$1" || fail "$2"
+}
+
 # Starts a pod running the encrypted test image, always pulling it.
 run_encrypted_pod() {
     kc -n "${NAMESPACE}" run "$1" \
@@ -484,9 +533,9 @@ kc -n "${NAMESPACE}" create secret generic "${KEY_SECRET}" \
     --type=key \
     --from-file="${WORK_DIR}/${KEY_FILE}"
 
-# Synced key files are named <md5 of key>-<namespace>-<secret>-<file>
+# Synced key files are named <md5 of key>_<namespace>_<secret>_<file>
 KEY_MD5=$(openssl dgst -md5 -r "${WORK_DIR}/${KEY_FILE}" | cut -d' ' -f1)
-SYNCED_KEY="${KEYS_DIR}/${KEY_MD5}-${NAMESPACE}-${KEY_SECRET}-${KEY_FILE}"
+SYNCED_KEY="${KEYS_DIR}/${KEY_MD5}_${NAMESPACE}_${KEY_SECRET}_${KEY_FILE}"
 
 log "Waiting for ${SYNCED_KEY} on all nodes"
 wait_until "key file to be synced" on_all_nodes test -f "${SYNCED_KEY}"
@@ -497,7 +546,7 @@ for node in ${NODES}; do
     perms=$(ct exec "${node}" stat -c '%a' "${SYNCED_KEY}")
     [[ "${perms}" == "600" ]] || fail "${SYNCED_KEY} on ${node} has permissions ${perms}, expected 600"
     listing=$(ct exec "${node}" ls "${KEYS_DIR}")
-    if grep -q -- "-${OTHER_SECRET}-" <<<"${listing}"; then
+    if grep -q -- "_${OTHER_SECRET}_" <<<"${listing}"; then
         fail "secret ${OTHER_SECRET} without type=key was synced on ${node}"
     fi
 done
@@ -516,6 +565,81 @@ log "Deleting decryption key secret ${KEY_SECRET}"
 kc -n "${NAMESPACE}" delete secret "${KEY_SECRET}"
 wait_until "key file to be removed" on_all_nodes test ! -e "${SYNCED_KEY}"
 log "Key file removed after secret deletion"
+
+log "Enabling the keyprotect handler with config secret ${KP_CONFIG_SECRET}"
+# No IBM Cloud service is contacted: IAM, which is called first to get a
+# token, resolves to the pods' loopback address where nothing listens. So
+# unwrapping fails transiently, like it would if the services were
+# unreachable.
+kc -n "${NAMESPACE}" create secret generic "${KP_CONFIG_SECRET}" \
+    --from-literal=config.json='{"keyprotect-url": "https://keyprotect.invalid", "instance-id": "e2e", "apikey": "e2e-invalid-apikey"}'
+kc -n "${NAMESPACE}" patch daemonset "${DAEMONSET}" --type=json -p '[
+    {"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "-keyprotectConfigKubeSecret"},
+    {"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "'"${KP_CONFIG_SECRET}"'"},
+    {"op": "add", "path": "/spec/template/spec/hostAliases", "value": [{"ip": "127.0.0.1", "hostnames": ["iam.cloud.ibm.com"]}]}
+]'
+kc -n "${NAMESPACE}" rollout status daemonset/"${DAEMONSET}" --timeout=3m
+NODES=$(daemonset_nodes)
+
+log "Checking the cleanup of the keys directory"
+kc -n "${NAMESPACE}" create secret generic "${KP_SECRET}" \
+    --type=kp-key \
+    --from-literal=rootkeyid=e2e-root-key \
+    --from-literal=ciphertext=e2e-ciphertext
+# The secret lacks the ciphertext, so its handler fails permanently.
+kc -n "${NAMESPACE}" create secret generic "${KP_INVALID_SECRET}" \
+    --type=kp-key \
+    --from-literal=rootkeyid=e2e-root-key
+# The key files the secrets had been synced to before their handlers failed.
+KP_KEY=$(synced_key_name "${KP_SECRET}" kpkey "unwrapped key")
+KP_INVALID_KEY=$(synced_key_name "${KP_INVALID_SECRET}" kpkey "invalid key")
+# A key file of the transiently failing secret in the legacy name format:
+# <md5 of content>-<namespace>-<secret>-<entry>. Such files are never kept,
+# as the secret they belong to is ambiguous.
+LEGACY_KEY=$(printf '%s-%s-%s-kpkey' \
+    "$(printf 'legacy key' | openssl dgst -md5 -r | cut -d' ' -f1)" "${NAMESPACE}" "${KP_SECRET}")
+STALE_KEY=$(synced_key_name e2e-deleted-secret key "revoked key")
+STALE_TEMP=.keysync-tmp-e2e
+UNMANAGED=e2e-manually-configured-key.pem
+create_on_all_nodes "${KP_KEY}" "unwrapped key"
+create_on_all_nodes "${KP_INVALID_KEY}" "invalid key"
+create_on_all_nodes "${LEGACY_KEY}" "legacy key"
+create_on_all_nodes "${STALE_KEY}" "revoked key"
+create_on_all_nodes "${STALE_TEMP}" "partially written key"
+create_on_all_nodes "${UNMANAGED}" "manually configured key"
+wait_for_sync
+expect_on_no_node "${STALE_KEY}" "stale key file ${STALE_KEY} was not removed"
+expect_on_no_node "${LEGACY_KEY}" "key file ${LEGACY_KEY} in the legacy format was not removed"
+expect_on_no_node "${STALE_TEMP}" "stale temporary file ${STALE_TEMP} was not removed"
+expect_on_no_node "${KP_INVALID_KEY}" "key file ${KP_INVALID_KEY} was not removed although its handler failed permanently"
+expect_on_all_nodes "${UNMANAGED}" "file ${UNMANAGED} not written by the key sync was removed"
+expect_on_all_nodes "${KP_KEY}" "key file ${KP_KEY} was removed although its secret still exists"
+pod_logs=$(kc -n "${NAMESPACE}" logs -l name="${DAEMONSET}" --tail=-1)
+grep -q "Unable to process secret, keeping its existing key files" <<<"${pod_logs}" ||
+    fail "the key sync pods did not log the transient failure to process ${KP_SECRET}"
+grep -q "Unable to process secret, removing its existing key files" <<<"${pod_logs}" ||
+    fail "the key sync pods did not log the permanent failure to process ${KP_INVALID_SECRET}"
+kc -n "${NAMESPACE}" delete secret "${KP_INVALID_SECRET}"
+log "Stale files and the keys of the permanently failing secret removed, other files and the keys of the transiently failing secret kept"
+
+log "Checking that the keys of the failing secret are kept across a restart"
+kc -n "${NAMESPACE}" rollout restart daemonset/"${DAEMONSET}"
+kc -n "${NAMESPACE}" rollout status daemonset/"${DAEMONSET}" --timeout=3m
+NODES=$(daemonset_nodes)
+wait_for_sync
+expect_on_all_nodes "${KP_KEY}" "key file ${KP_KEY} was removed after a restart although its secret still exists"
+expect_on_all_nodes "${UNMANAGED}" "file ${UNMANAGED} not written by the key sync was removed after a restart"
+log "Key file kept after a restart"
+
+log "Deleting the failing secret ${KP_SECRET}"
+kc -n "${NAMESPACE}" delete secret "${KP_SECRET}"
+wait_until "key file of ${KP_SECRET} to be removed" on_all_nodes test ! -e "${KEYS_DIR}/${KP_KEY}"
+expect_on_all_nodes "${UNMANAGED}" "file ${UNMANAGED} not written by the key sync was removed"
+# shellcheck disable=SC2016 # expanded by the shell on the node
+on_all_nodes sh -c '! ls -A "$1" | grep "^\.keysync-tmp-"' sh "${KEYS_DIR}" ||
+    fail "temporary files were left behind in ${KEYS_DIR}"
+on_all_nodes rm -f "${KEYS_DIR}/${UNMANAGED}"
+log "Key file removed after deleting the failing secret"
 
 log "Uninstalling helm chart"
 hc uninstall "${RELEASE}" --namespace "${NAMESPACE}" --wait --timeout 3m

@@ -154,10 +154,22 @@ After waiting a while, we can see the logs that the key is being synced
 $ kubectl -n enc-key-sync logs enc-key-sync-nt27j
 W1119 02:40:26.700451       1 client_config.go:543] Neither --kubeconfig nor --master was specified.  Using the inClusterConfig.  This might not work.
 time="2020-11-19T02:40:26Z" level=info msg="Starting KeySync server with sync-dir /keys, interval 10ns s, namespace enc-key-sync, specialHandlers: map[kp-key:0x1130980]"
-time="2020-11-19T02:40:37Z" level=info msg="Syncing new key: aa6aa339f188ac95e64f272bd085679a-enc-key-sync-my-wrapped-key-kpkey"
+time="2020-11-19T02:40:37Z" level=info msg="Syncing new key: aa6aa339f188ac95e64f272bd085679a_enc-key-sync_my-wrapped-key_kpkey"
 ```
 
 We should now be able to run the encrypted image
 ```
 $ kubectl run enc-workload --image=docker.io/lumjjb/sample-enc-app
 ```
+
+## Revoking access and Key Protect failures
+
+The unwrapped keys stay on the nodes as long as Key Protect cannot be reached
+or fails with a temporary error (no response, a request timeout, rate limiting
+or a server error), so that an outage does not break pulling encrypted images.
+They are written again once unwrapping succeeds.
+
+The keys of a secret are removed from the nodes when its unwrap request is
+rejected with any other client error, e.g. because the root key was disabled
+or deleted, access to it was removed, or the API key was deleted. Keys can
+also be revoked by deleting the secret from the cluster.

@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package sechandlers defines how the data of key secrets is turned into key
+// files, and the handler for regular (type=key) secrets.
 package sechandlers
 
 import "errors"

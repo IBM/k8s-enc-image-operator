@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package keysync implements the server syncing decryption keys from
+// kubernetes secrets to local key files.
 package keysync
 
 import (
@@ -20,6 +22,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -137,6 +140,8 @@ type KeySyncServer struct {
 	addKeyHandlersMutex *sync.Mutex
 }
 
+// NewKeySyncServer returns a key sync server with the given configuration,
+// handling secrets of type "key". Start runs it.
 func NewKeySyncServer(ksc KeySyncServerConfig) *KeySyncServer {
 	ks := KeySyncServer{
 		k8sClient:           ksc.K8sClient,
@@ -196,7 +201,7 @@ func (ks *KeySyncServer) syncOnce() {
 		}
 		filenameMap := ks.syncSecretsToLocalKeys(secList, skh)
 
-		allFilenameMap = combineFilenameMap(allFilenameMap, filenameMap)
+		maps.Copy(allFilenameMap, filenameMap)
 	}
 
 	// If any list failed we do not know which keys are still valid, so skip
@@ -211,7 +216,7 @@ func (ks *KeySyncServer) syncOnce() {
 	ks.cleanupKeys(allFilenameMap)
 }
 
-// AddKeyHandler will queue adding new handlers to the key sync server that will
+// AddSecretKeyHandler will queue adding new handlers to the key sync server that will
 // take effect on the next sync.
 // SecretKeyHandlers handles non-standard keys with additional requirements
 // such as requiring a remote unwrapping service, or talking to a HSM, etc.
@@ -223,20 +228,6 @@ func (ks *KeySyncServer) AddSecretKeyHandler(secretType string, skh sechandlers.
 	defer ks.addKeyHandlersMutex.Unlock()
 
 	ks.addKeyHandlers[secretType] = skh
-}
-
-// combineFilenameMap returns a map that combines the contents of both f1 and f2
-// is potentially destructive to f1 for optimization reasons (like slice appends)
-func combineFilenameMap(f1 map[string]bool, f2 map[string]bool) map[string]bool {
-	if len(f1) == 0 {
-		return f2
-	}
-
-	for k, b := range f2 {
-		f1[k] = b
-	}
-
-	return f1
 }
 
 // syncSecretsToLocalKeys syncs the secrets to the local keys, errors are logged

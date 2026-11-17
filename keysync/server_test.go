@@ -947,18 +947,6 @@ func TestKeySyncListError(t *testing.T) {
 	})
 }
 
-func TestCombineFilenameMap(t *testing.T) {
-	got := combineFilenameMap(map[string]bool{}, map[string]bool{"a": true})
-	if len(got) != 1 || !got["a"] {
-		t.Fatalf("unexpected result %v", got)
-	}
-
-	got = combineFilenameMap(map[string]bool{"a": true}, map[string]bool{"b": true})
-	if len(got) != 2 || !got["a"] || !got["b"] {
-		t.Fatalf("unexpected result %v", got)
-	}
-}
-
 // skipIfRoot skips tests relying on permission errors, which root bypasses.
 func skipIfRoot(t *testing.T) {
 	t.Helper()

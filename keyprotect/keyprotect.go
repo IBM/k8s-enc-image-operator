@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package keyprotect creates the secret key handler for IBM Key Protect
+// wrapped keys from its configuration.
 package keyprotect
 
 import (
@@ -31,8 +33,8 @@ import (
 //	    "apikey": "ZWh0Y.................................4Tsxbz",
 //	}
 type keyprotectConfig struct {
-	KeyprotectUrl string `json:"keyprotect-url"`
-	InstanceId    string `json:"instance-id"`
+	KeyprotectURL string `json:"keyprotect-url"`
+	InstanceID    string `json:"instance-id"`
 	Apikey        string `json:"apikey"`
 }
 
@@ -56,8 +58,8 @@ func GetSecKeyHandlerFromConfig(data []byte) (sechandlers.SecretKeyHandler, erro
 		return nil, err
 	}
 
-	secHandler, err := kpsh.NewKeyprotectSecretKeyHandler(kpc.KeyprotectUrl,
-		kpc.InstanceId,
+	secHandler, err := kpsh.NewKeyprotectSecretKeyHandler(kpc.KeyprotectURL,
+		kpc.InstanceID,
 		kpc.Apikey)
 	if err != nil {
 		return nil, err

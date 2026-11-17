@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Command keysync syncs the decryption keys for encrypted container images
+// from kubernetes secrets to a directory on the node, where the container
+// runtime picks them up.
 package main
 
 import (
@@ -74,26 +77,26 @@ func main() {
 
 	config, err := clientcmd.BuildConfigFromFlags("", inputFlags.kubeconfig)
 	if err != nil {
-		panic(err)
+		fatal("Unable to load kubeconfig", err)
 	}
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		panic(err)
+		fatal("Unable to create kubernetes client", err)
 	}
 
 	keyFilePermissions, err := parseKeyFilePermissions(inputFlags.keyFilePermissions)
 	if err != nil {
-		panic(err)
+		fatal("Invalid -keyFilePermissions", err)
 	}
 
 	keyFileOwnerUID, keyFileOwnerGID, err := parseKeyFileOwnership(inputFlags.keyFileOwnership)
 	if err != nil {
-		panic(err)
+		fatal("Invalid -keyFileOwnership", err)
 	}
 
 	interval, err := parseInterval(inputFlags.interval)
 	if err != nil {
-		panic(err)
+		fatal("Invalid -interval", err)
 	}
 
 	namespace := os.Getenv(NamespaceEnv)
@@ -112,7 +115,7 @@ func main() {
 	if inputFlags.keyprotectConfigFile != "" {
 		kpskh, err := keyprotect.GetSecKeyHandlerFromConfigFile(inputFlags.keyprotectConfigFile)
 		if err != nil {
-			panic(err)
+			fatal("Unable to configure keyprotect from -keyprotectConfigFile", err)
 		}
 		ks.AddSecretKeyHandler("kp-key", kpskh)
 	} else if inputFlags.keyprotectConfigKubeSecret != "" {
@@ -138,9 +141,14 @@ func main() {
 	}
 
 	if err := ks.Start(); err != nil {
-		slog.Error("KeySync failure", "error", err)
-		os.Exit(1)
+		fatal("KeySync failure", err)
 	}
+}
+
+// fatal logs the error and exits.
+func fatal(msg string, err error) {
+	slog.Error(msg, "error", err)
+	os.Exit(1)
 }
 
 // parseKeyFilePermissions parses an octal permission string such as "0600".

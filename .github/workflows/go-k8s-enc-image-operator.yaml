@@ -78,7 +78,7 @@ jobs:
     # specific configuration for pulling encrypted images.
     - name: Install kind
       if: matrix.runtime == 'containerd'
-      uses: helm/kind-action@v1.15.1
+      uses: helm/kind-action@v1.15.2
       with:
         version: v0.33.0
         install_only: true

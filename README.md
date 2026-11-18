@@ -2,33 +2,36 @@
 
 This operator provides facility to sync decryption keys required for Encrypted Container Images through the use of Kubernetes secrets.
 
-NOTE: If you are using the operator from Operatorhub.io, please look at this [README](enc-key-sync-operator/README.md)  instead.
+NOTE: If you are using the operator from Operatorhub.io, please look at this [README](helm-operator/README.md) instead.
 NOTE: If you are looking for Keyprotect specific details, please look at this [KEYPROTECT.md](KEYPROTECT.md) instead.
 
 # Requirements
 
-Currently this will only work out of the box with:
-- Kubernetes (>= 1.17) with cri-o runtime (>=1.17) or containerd (>=1.4)
+- Kubernetes with a container runtime that supports image decryption:
+  - CRI-O (>= 1.17), which supports it out of the box
+  - containerd (>= 1.4) with [imgcrypt](https://github.com/containerd/imgcrypt)
+    configured
 - Optional: Helm (>= 3)
 
-For this README, we will use cri-o as a runtime as it has default configuration
-set up.
+The [end-to-end tests](#end-to-end-tests) run against Kubernetes v1.37 with
+CRI-O 1.35 (minikube v1.39) and with containerd 2.x and imgcrypt v2.0.3 (kind).
 
-This can be done either using OpenShift 4.4 and above or using minikube v1.12.0
-with this command:
+For this README, we will use CRI-O as a runtime as it has default configuration
+set up. This can be done either using OpenShift (which uses CRI-O) or using
+minikube with this command:
 
 ```
-$ minikube start \
-    --network-plugin=cni \
-    --enable-default-cni \
-    --container-runtime=cri-o \
-    --bootstrapper=kubeadm
+$ minikube start --container-runtime=cri-o
 ```
 <details>
 <summary>containerd configuration</summary>
 
-With additional configuration, it can be used with containerd runtime (>=1.4).
-For more info, please refer to the [containerd/cri docs](https://github.com/containerd/cri/blob/master/docs/decryption.md).
+With additional configuration, it can be used with the containerd runtime:
+imgcrypt's `ctd-decoder` has to be installed on the nodes and configured as
+stream processor for encrypted layers. For more info, please refer to the
+[imgcrypt docs](https://github.com/containerd/imgcrypt). The
+[end-to-end test](scripts/e2e-helm.sh) sets this up for a kind cluster; there,
+containerd looks for decryption keys in `/etc/containerd/ocicrypt/keys`.
 </details>
 
 ## Install the operator
@@ -51,6 +54,10 @@ Deploy the operator on the cluster with `helm`.
 $ kubectl create namespace enc-key-sync
 $ helm install --namespace=enc-key-sync k8s-enc-image-operator ./helm-operator/helm-charts/enckeysync/
 ```
+
+On OpenShift, add `--set isOpenShift=true`: SELinux only allows the key sync
+pods to write to the keys directory on the host when they run privileged.
+`deploy/deploy.yaml` does not set this up.
 
 <details>
 <summary>containerd configuration</summary>
@@ -155,9 +162,10 @@ has been encrypted by the above key's public key.
 $ kubectl run enc-workload --image=docker.io/lumjjb/sample-enc-app
 ```
 
-# Developing 
+# Developing
 
-We are using golang 1.19.12 or later, expect problems with earlier releases.
+Building requires Go 1.26.4 or later (see [go.mod](go.mod)). See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the tools needed by the checks.
 
 ## End-to-end tests
 
@@ -169,12 +177,19 @@ $ make e2e-helm-containerd   # kind cluster with containerd
 $ make e2e-helm-crio         # minikube cluster with --container-runtime=cri-o
 ```
 
+These require `kubectl`, `helm`, `go`, `openssl` and `docker` or `podman`, as
+well as `kind`, `curl` and `tar` (containerd) or `minikube` (CRI-O).
+
 This builds the keysync image from source, installs the helm chart, and checks
 that keys from `type=key` secrets are synced to (and removed from) the nodes.
 It also sets up image decryption on the nodes (with [imgcrypt](https://github.com/containerd/imgcrypt)
 for containerd, built into CRI-O) and a local registry, and checks that an
 encrypted image cannot be run without the key, but runs once the key has been
-synced by the operator.
+synced by the operator. Finally, it checks the cleanup of the keys directory:
+stale key files (also in the legacy name format) are removed, files not
+written by the operator are kept, and so are the keys of a secret whose
+handler fails transiently (also across a restart of the key sync pods), but
+not those of a secret whose handler fails permanently.
 
 The script creates (and deletes) its own cluster and uses its own kubeconfig,
 so your default kubeconfig is not modified; set `KEEP_CLUSTER=true` to keep

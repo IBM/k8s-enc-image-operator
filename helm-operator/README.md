@@ -23,10 +23,11 @@ decrypt the container images in different directories.
 
 - cri-o (>=1.17) by default has keys in directory `/etc/crio/keys`.
   This is configurable in the runtime if required, please refer to the
-  [cri-o decryption doc](https://github.com/cri-o/cri-o/blob/master/tutorials/decryption.md).
+  [cri-o decryption doc](https://github.com/cri-o/cri-o/blob/main/tutorials/decryption.md).
 
-- containerd (>=1.4) requires some configuration of the runtime. For this,
-  please refer to the [containerd decryption doc](https://github.com/containerd/cri/blob/master/docs/decryption.md).
+- containerd (>=1.4) requires some configuration of the runtime: imgcrypt's
+  `ctd-decoder` has to be installed and configured for encrypted layers. For
+  this, please refer to the [imgcrypt docs](https://github.com/containerd/imgcrypt).
 
 For OpenShift (>=4.4), it is configured by default to use cri-o with path 
 `/etc/crio/keys`
@@ -52,14 +53,19 @@ spec:
 
 The default value of `keysDir` uses the default cri-o runtime path.
 
+On OpenShift, also set `isOpenShift: true` in the spec: SELinux only allows the
+key sync pods to write to the keys directory on the host when they run
+privileged.
+
 What the daemonset does is it syncs all keys that you will configure to this
 path on every worker node's host file system.
 
 ### Configuring decryption keys
 
 Great, now that we have the key syncer running, we can create our decryption
-keys. This can be done by creating a kubernetes secret in the namespace
-where the operator was installed with `--type=key`. For example
+keys. This can be done by creating a kubernetes secret with `--type=key` in
+the namespace of the `EncKeySync` resource, which is where the key sync
+daemonset runs. For example
 
 ```
 $ kubectl create -n enc-key-sync secret generic  \
@@ -68,9 +74,9 @@ $ kubectl create -n enc-key-sync secret generic  \
   my-decryption-key
 ```
 
-In this case, we installed the operator in namespace `enc-key-sync`,
+In this case, we created the `EncKeySync` resource in namespace `enc-key-sync`,
 and have a private key locally with filename `my-priv-key.pem`. If you are
-following this example, you can download the private key at [my-priv-key.pem](/rsrc/my-priv-key.pem)
+following this example, you can find the private key in the [README](/README.md#configure-a-key)
 
 ## Running an encrypted container
 

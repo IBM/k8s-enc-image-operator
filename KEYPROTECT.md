@@ -12,15 +12,25 @@ well as the following:
   - Know the key protect URL - i.e. https://us-south.kms.cloud.ibm.com/
   - Have the bluemix instance ID for your KP instance
   - Have an apikey to access the unwrap API for your KP instance (for your keys)
-- For this example, we will be using crio, therefore requires a cluster with 
-Kubernetes (>= 1.17) with cri-o runtime (>=1.17)
+- For this example, we will be using CRI-O, therefore requires a Kubernetes
+  cluster with the CRI-O runtime (see the [README.md](/README.md))
 
 
 ## Deploying
 
-For this example, we will use the direct deployment which is supported. Observer
-the file `deploy/kp_deploy.yaml`, and note the configuration at the bottom of the
-file:
+For this example, we will use the direct deployment. There are two variants,
+which differ in how the key sync reads the Key Protect configuration:
+
+- [deploy/kp_config_kubesecret_deploy.yaml](deploy/kp_config_kubesecret_deploy.yaml)
+  reads it from the `keyprotect-config` secret through the Kubernetes API
+  (`-keyprotectConfigKubeSecret`), and picks up changes to the secret
+  without a restart.
+- [deploy/kp_config_file_deploy.yaml](deploy/kp_config_file_deploy.yaml)
+  mounts the same secret as a file (`-keyprotectConfigFile`), which is only
+  read on startup.
+
+We will use `deploy/kp_config_kubesecret_deploy.yaml`. Observe the file, and
+note the configuration at the bottom of the file:
 
 ```
 apiVersion: v1
@@ -44,7 +54,7 @@ replace the place holder details in this file.
 Once that is done, deploy the operator on the cluster with `kubectl`. 
 By default, it will install the operator in the `enc-key-sync` namespace.
 ```
-$ kubectl apply -f deploy/kp_deploy.yaml
+$ kubectl apply -f deploy/kp_config_kubesecret_deploy.yaml
 ```
 
 Verify that the daemonset is running by observing the pods in the namespace:
@@ -101,7 +111,9 @@ LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFcEFJQkFBS0NBUUVBdjhOeTdkQ1dROFBk
 ```
 
 Follow the steps at https://cloud.ibm.com/docs/key-protect?topic=key-protect-wrap-keys,
-create a KP key and then, wrap the the payload above as the `plaintext` and setting `aad` as the empty list.
+create a KP key and then, wrap the payload above as the `plaintext` and setting `aad` as the empty list.
+The operator unwraps the key without additional authenticated data, so a key
+wrapped with a non-empty `aad` cannot be unwrapped.
 An example would look like this (with the credentials masked):
 
 ```
@@ -148,14 +160,21 @@ $ kubectl -n enc-key-sync create -f my-wrapped-key.yaml
 
 
 
-After waiting a while, we can see the logs that the key is being synced
+Within one sync interval (10 seconds by default), we can see in the logs that
+the key is being synced
 
 ```
 $ kubectl -n enc-key-sync logs enc-key-sync-nt27j
-W1119 02:40:26.700451       1 client_config.go:543] Neither --kubeconfig nor --master was specified.  Using the inClusterConfig.  This might not work.
-time="2020-11-19T02:40:26Z" level=info msg="Starting KeySync server with sync-dir /keys, interval 10ns s, namespace enc-key-sync, specialHandlers: map[kp-key:0x1130980]"
-time="2020-11-19T02:40:37Z" level=info msg="Syncing new key: aa6aa339f188ac95e64f272bd085679a_enc-key-sync_my-wrapped-key_kpkey"
+...
+2026/11/13 20:16:23 INFO New keyprotect config detected in secrets, configuring...
+2026/11/13 20:16:23 INFO Starting KeySync server syncDir=/keys interval=10s namespace=enc-key-sync
+2026/11/13 20:16:23 INFO Private key files will be persisted with permissions permissions=-rw-------
+2026/11/13 20:16:33 INFO Syncing new key filename=aa6aa339f188ac95e64f272bd085679a_enc-key-sync_my-wrapped-key_kpkey
 ```
+
+If the key cannot be unwrapped, the error is logged. Whether a key file synced
+from the secret before is kept depends on the error, see
+[Revoking access and Key Protect failures](#revoking-access-and-key-protect-failures).
 
 We should now be able to run the encrypted image
 ```
@@ -171,5 +190,6 @@ They are written again once unwrapping succeeds.
 
 The keys of a secret are removed from the nodes when its unwrap request is
 rejected with any other client error, e.g. because the root key was disabled
-or deleted, access to it was removed, or the API key was deleted. Keys can
+or deleted, access to it was removed, or the API key was deleted. The same
+applies to a secret missing the `rootkeyid` or `ciphertext` field. Keys can
 also be revoked by deleting the secret from the cluster.
